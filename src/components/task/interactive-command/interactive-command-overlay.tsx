@@ -107,9 +107,9 @@ export function InteractiveCommandOverlay() {
         )}
         {activeCommand.type === 'compact' && (
           <ConfirmDialog
-            title="Compact Conversation"
-            message="This will summarize the conversation to save context space. Continue?"
-            confirmLabel="Compact"
+            title={t('compactConversation')}
+            message={t('compactConversationConfirm')}
+            confirmLabel={t('compact')}
             onConfirm={async () => {
               const { setLoading, setError } = useInteractiveCommandStore.getState();
               setLoading(true);
@@ -124,12 +124,6 @@ export function InteractiveCommandOverlay() {
               } catch (err) {
                 setError('Failed to compact conversation');
               }
-            title={t('compactConversation')}
-            message={t('compactConversationConfirm')}
-            confirmLabel={t('compact')}
-            onConfirm={() => {
-              // TODO: Implement compact
-              closeCommand();
             }}
             onCancel={closeCommand}
           />

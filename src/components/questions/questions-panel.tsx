@@ -1,10 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { MessageCircleQuestion, ChevronDown, ChevronRight, X, ExternalLink } from 'lucide-react';
+import { MessageCircleQuestion, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { QuestionPrompt } from '@/components/task/interactive-command/question-prompt';
 import { useQuestionsStore, type PendingQuestionEntry } from '@/stores/questions-store';
 import { useTaskStore } from '@/stores/task-store';
 import { cn } from '@/lib/utils';
@@ -16,37 +14,12 @@ interface Question {
   multiSelect: boolean;
 }
 
-function QuestionEntryItem({ entry, onAnswered }: { entry: PendingQuestionEntry; onAnswered: () => void }) {
-  const [expanded, setExpanded] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+function QuestionEntryItem({ entry }: { entry: PendingQuestionEntry }) {
   const { selectTask } = useTaskStore();
   const { closePanel } = useQuestionsStore();
 
   const questions = entry.questions as Question[];
   const firstQuestion = questions[0];
-
-  const handleAnswer = async (answers: Record<string, string | string[]>) => {
-    setSubmitting(true);
-    try {
-      const res = await fetch('/api/questions/answer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          attemptId: entry.attemptId,
-          toolUseId: entry.toolUseId,
-          questions: entry.questions,
-          answers,
-        }),
-      });
-      if (res.ok) {
-        onAnswered();
-      }
-    } catch {
-      // Failed to answer
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const handleGoToTask = () => {
     selectTask(entry.taskId);
@@ -57,16 +30,11 @@ function QuestionEntryItem({ entry, onAnswered }: { entry: PendingQuestionEntry;
 
   return (
     <div className="border-b border-border last:border-b-0">
-      {/* Collapsed summary row */}
+      {/* Clickable summary row - opens task in chat */}
       <button
-        onClick={() => setExpanded(!expanded)}
+        onClick={handleGoToTask}
         className="w-full text-left px-4 py-3 hover:bg-accent/50 transition-colors flex items-start gap-2"
       >
-        {expanded ? (
-          <ChevronDown className="size-3.5 text-muted-foreground shrink-0 mt-0.5" />
-        ) : (
-          <ChevronRight className="size-3.5 text-muted-foreground shrink-0 mt-0.5" />
-        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-0.5">
             <span className="text-sm font-medium truncate">{entry.taskTitle}</span>
@@ -82,31 +50,6 @@ function QuestionEntryItem({ entry, onAnswered }: { entry: PendingQuestionEntry;
           </div>
         </div>
       </button>
-
-      {/* Expanded: full QuestionPrompt + go-to-task link */}
-      {expanded && (
-        <div className="border-t border-border/50">
-          {/* Go to task link */}
-          <div className="px-4 pt-2 flex justify-end">
-            <button
-              onClick={handleGoToTask}
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ExternalLink className="size-3" />
-              Go to task
-            </button>
-          </div>
-
-          {/* Reuse the same QuestionPrompt component */}
-          <div className={cn(submitting && 'opacity-50 pointer-events-none')}>
-            <QuestionPrompt
-              questions={questions}
-              onAnswer={handleAnswer}
-              onCancel={() => setExpanded(false)}
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -126,7 +69,7 @@ interface QuestionsPanelProps {
 }
 
 export function QuestionsPanel({ className }: QuestionsPanelProps) {
-  const { isOpen, closePanel, pendingQuestions, removeQuestion } = useQuestionsStore();
+  const { isOpen, closePanel, pendingQuestions } = useQuestionsStore();
   const entries = Array.from(pendingQuestions.values()).sort((a, b) => b.timestamp - a.timestamp);
 
   if (!isOpen) return null;
@@ -183,7 +126,6 @@ export function QuestionsPanel({ className }: QuestionsPanelProps) {
               <QuestionEntryItem
                 key={entry.attemptId}
                 entry={entry}
-                onAnswered={() => removeQuestion(entry.attemptId)}
               />
             ))
           )}
