@@ -87,7 +87,7 @@ export function useAttemptStream(
           socketInstance.emit('attempt:subscribe', { attemptId: currentId });
           // Fetch pending question from server on reconnect
           // This recovers questions that were emitted while we were disconnected
-          fetch(`/api/attempts/${currentId}/pending-question`)
+          fetch(`/api/attempts/${currentId}/pending-question`, { cache: 'no-store' })
             .then(res => res.ok ? res.json() : null)
             .then(data => {
               if (data?.question) {
@@ -429,6 +429,7 @@ export function useAttemptStream(
 
   // Clear messages and reset state when taskId changes
   useEffect(() => {
+    console.log('[useAttemptStream] taskId changed to:', taskId, '| prev attemptId:', currentAttemptIdRef.current);
     // Unsubscribe from old attempt room to stop receiving its events
     if (currentAttemptIdRef.current && socketRef.current) {
       socketRef.current.emit('attempt:unsubscribe', { attemptId: currentAttemptIdRef.current });
@@ -443,35 +444,97 @@ export function useAttemptStream(
     // Don't clear currentTaskIdRef here - we'll update it in checkRunningAttempt
   }, [taskId]);
 
+  // Ensure socket subscription when attempt ID and connection are both available
+  // This is a safety net for cases where checkRunningAttempt's subscribe fails
+  // (e.g., socket was connecting when checkRunningAttempt ran)
+  useEffect(() => {
+    if (isConnected && currentAttemptId && socketRef.current) {
+      socketRef.current.emit('attempt:subscribe', { attemptId: currentAttemptId });
+    }
+  }, [isConnected, currentAttemptId]);
+
   // Fetch pending question from server (authoritative source)
-  const fetchPendingQuestion = useCallback(async (attemptId: string) => {
+  const fetchPendingQuestion = useCallback(async (attemptId: string, signal?: AbortSignal) => {
     try {
-      const res = await fetch(`/api/attempts/${attemptId}/pending-question`);
-      if (!res.ok) return;
+      console.log('[fetchPendingQuestion] Fetching for attempt:', attemptId);
+      const res = await fetch(`/api/attempts/${attemptId}/pending-question`, { cache: 'no-store', signal });
+      if (!res.ok) {
+        console.log('[fetchPendingQuestion] Failed, HTTP', res.status);
+        return;
+      }
       const data = await res.json();
+      console.log('[fetchPendingQuestion] Result:', data.question ? `Found (toolUseId: ${data.question.toolUseId})` : 'No pending question');
       if (data.question) {
-        log.debug({ question: data.question }, 'Restored pending question from server');
         setActiveQuestion(data.question);
       }
     } catch (err) {
-      log.error({ err }, 'Failed to fetch pending question');
+      if ((err as Error)?.name === 'AbortError') return;
+      console.error('[fetchPendingQuestion] Error:', err);
+    }
+  }, []);
+
+  // Fetch persistent question for a task (survives CLI auto-handle + attempt completion)
+  const fetchPersistentQuestion = useCallback(async (taskId: string, signal?: AbortSignal) => {
+    try {
+      console.log('[fetchPersistentQuestion] Fetching for task:', taskId);
+      const res = await fetch(`/api/tasks/${taskId}/pending-question`, { cache: 'no-store', signal });
+      if (!res.ok) return;
+      const data = await res.json();
+      console.log('[fetchPersistentQuestion] Result:', data.question ? `Found (toolUseId: ${data.question.toolUseId})` : 'No persistent question');
+      if (data.question) {
+        setActiveQuestion(data.question);
+      }
+    } catch (err) {
+      if ((err as Error)?.name === 'AbortError') return;
+      console.error('[fetchPersistentQuestion] Error:', err);
     }
   }, []);
 
   // Re-fetch pending question for current attempt (used by UI to recover stuck questions)
+  // If currentAttemptIdRef is null (checkRunningAttempt hasn't completed yet), try to fetch
+  // the running attempt first, then fetch the question.
   const refetchQuestion = useCallback(async () => {
-    if (!currentAttemptIdRef.current) return;
-    await fetchPendingQuestion(currentAttemptIdRef.current);
-  }, [fetchPendingQuestion]);
+    let attemptId = currentAttemptIdRef.current;
+
+    // If we don't have the attempt ID yet, try to get it from the running attempt API
+    if (!attemptId && taskId) {
+      try {
+        const res = await fetch(`/api/tasks/${taskId}/running-attempt`, { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.attempt?.status === 'running') {
+            attemptId = data.attempt.id;
+          }
+        }
+      } catch {
+        // Fall through
+      }
+    }
+
+    if (attemptId) {
+      await fetchPendingQuestion(attemptId);
+    } else if (taskId) {
+      // No running attempt — try persistent question (CLI auto-handled)
+      await fetchPersistentQuestion(taskId);
+    }
+  }, [fetchPendingQuestion, fetchPersistentQuestion, taskId]);
 
   // Check for running attempt on mount/taskId change
   useEffect(() => {
     if (!taskId) return;
+    const abortController = new AbortController();
     const checkRunningAttempt = async () => {
       try {
-        const res = await fetch(`/api/tasks/${taskId}/running-attempt`);
-        if (!res.ok) return;
+        console.log('[checkRunningAttempt] Checking for running attempt, taskId:', taskId);
+        const res = await fetch(`/api/tasks/${taskId}/running-attempt`, { cache: 'no-store', signal: abortController.signal });
+        if (!res.ok) {
+          console.log('[checkRunningAttempt] No running attempt (HTTP', res.status, ')');
+          return;
+        }
         const data = await res.json();
+        // Abort guard: if taskId changed while we were fetching, discard stale results
+        if (abortController.signal.aborted) return;
+        console.log('[checkRunningAttempt] Response:', { attemptId: data.attempt?.id, status: data.attempt?.status, messageCount: data.messages?.length });
         if (data.attempt && data.attempt.status === 'running') {
           currentTaskIdRef.current = taskId;
           currentAttemptIdRef.current = data.attempt.id; // CRITICAL: Sync ref BEFORE state for immediate filtering
@@ -486,24 +549,27 @@ export function useAttemptStream(
           setIsRunning(true);
           addRunningTask(taskId);
 
-          // Fetch pending question from server (authoritative source)
-          // This replaces fragile message-history scanning
-          await fetchPendingQuestion(data.attempt.id);
-
-          // Only subscribe if socket is connected
-          if (isConnected) {
-            socketRef.current?.emit('attempt:subscribe', { attemptId: data.attempt.id });
+          // Subscribe FIRST so we receive re-emitted question:ask from server
+          if (socketRef.current?.connected) {
+            socketRef.current.emit('attempt:subscribe', { attemptId: data.attempt.id });
           }
+
+          // Also fetch pending question via HTTP as backup
+          console.log('[checkRunningAttempt] Fetching pending question for attempt:', data.attempt.id);
+          await fetchPendingQuestion(data.attempt.id, abortController.signal);
         } else {
-          // Ensure currentTaskIdRef is updated
+          // No running attempt — check for persistent question (CLI auto-handled, attempt completed)
           currentTaskIdRef.current = taskId;
+          await fetchPersistentQuestion(taskId, abortController.signal);
         }
-      } catch {
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') return;
         // Ensure currentTaskIdRef is updated even on error
         currentTaskIdRef.current = taskId;
       }
     };
     checkRunningAttempt();
+    return () => abortController.abort();
   }, [taskId, fetchPendingQuestion]); // Remove isConnected from deps - we handle it inside
 
   const startAttempt = useCallback((taskId: string, prompt: string, displayPrompt?: string, fileIds?: string[], model?: string) => {
@@ -530,6 +596,11 @@ export function useAttemptStream(
 
     const attemptId = activeQuestion.attemptId;
     const answeredToolUseId = activeQuestion.toolUseId;
+
+    // Mark as running immediately — either the existing attempt resumes (SDK)
+    // or a new attempt is created via auto-retry (CLI). Either way, work is happening.
+    setIsRunning(true);
+    if (currentTaskIdRef.current) addRunningTask(currentTaskIdRef.current);
 
     // Send SDK format with toolUseId for server-side validation
     // The agent-manager's canUseTool callback will resume streaming

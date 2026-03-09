@@ -3,7 +3,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { cliQuery } from '@/lib/cli-query';
 
 const execFileAsync = promisify(execFile);
 
@@ -93,53 +93,19 @@ export async function POST(request: NextRequest) {
     // Build prompt for Claude
     const prompt = buildCommitMessagePrompt(diffOutput);
 
-    // Call Claude SDK to generate commit message
+    // Call Claude CLI to generate commit message
     try {
-      const response = query({
+      const result = await cliQuery({
         prompt,
-        options: {
-          cwd: resolvedPath,
-          model: 'haiku',
-          permissionMode: 'bypassPermissions' as const,
-        },
+        cwd: resolvedPath,
+        model: 'claude-haiku-4-5-20251001', // Use Haiku for fast commit messages
       });
 
-      let buffer = '';
-      for await (const message of response) {
-        // Handle streaming events
-        if (message.type === 'stream_event') {
-          const streamMsg = message as {
-            type: 'stream_event';
-            event: { type: string; delta?: { type: string; text?: string } }
-          };
-          const event = streamMsg.event;
-          if (event?.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta.text) {
-            buffer += event.delta.text;
-          }
-        }
-
-        // Handle assistant messages for non-streaming responses
-        if (message.type === 'assistant') {
-          const assistantMsg = message as {
-            type: 'assistant';
-            message?: { content: Array<{ type: string; text?: string }> }
-          };
-          const content = assistantMsg.message?.content || [];
-          for (const block of content) {
-            if (block.type === 'text' && block.text) {
-              if (!buffer.includes(block.text)) {
-                buffer = block.text;
-              }
-            }
-          }
-        }
-      }
-
-      const { title, description } = extractCommitMessage(buffer);
+      const { title, description } = extractCommitMessage(result.text);
 
       // Validate non-empty title
       if (!title || title.trim().length === 0) {
-        console.error('Claude SDK returned empty title. Buffer:', buffer);
+        console.error('Claude CLI returned empty title. Buffer:', result.text);
         return NextResponse.json(
           { error: 'Generated message was empty. Try staging different files.' },
           { status: 500 }
@@ -157,7 +123,7 @@ export async function POST(request: NextRequest) {
         },
       });
     } catch (error) {
-      console.error('Error calling Claude SDK:', error);
+      console.error('Error calling Claude CLI:', error);
 
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       const isRateLimitError = errorMessage.toLowerCase().includes('rate limit');

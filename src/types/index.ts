@@ -94,6 +94,10 @@ export interface ClaudeContentBlock {
   id?: string;
   name?: string;
   input?: unknown;
+  // tool_result fields
+  tool_use_id?: string;
+  content?: string | unknown[];
+  is_error?: boolean;
 }
 
 export interface ClaudeMessage {

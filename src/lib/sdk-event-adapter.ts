@@ -144,6 +144,10 @@ function adaptContentBlock(block: SDKContentBlock): ClaudeContentBlock {
     id: block.id,
     name: block.name,
     input: block.input,
+    // Preserve tool_result fields (tool_use_id, content, is_error)
+    tool_use_id: block.tool_use_id,
+    content: block.content,
+    is_error: block.is_error,
   };
 }
 

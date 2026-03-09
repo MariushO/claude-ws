@@ -57,7 +57,6 @@ export function TaskDetailPanel({ className }: TaskDetailPanelProps) {
   const [hasSentFirstMessage, setHasSentFirstMessage] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [shellPanelExpanded, setShellPanelExpanded] = useState(false);
-  const [showQuestionPrompt, setShowQuestionPrompt] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
   const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -162,12 +161,12 @@ export function TaskDetailPanel({ className }: TaskDetailPanelProps) {
 
   // Reset state when selectedTask changes
   useEffect(() => {
+    console.log('[TaskDetailPanel] selectedTask changed:', selectedTask?.id, '→ resetting state');
     setConversationKey(prev => prev + 1);
     setShowStatusDropdown(false);
     setHasSentFirstMessage(false);
     setCurrentAttemptFiles([]);
     setShellPanelExpanded(false);
-    setShowQuestionPrompt(false);
     setIsEditingTitle(false);
     setEditTitleValue('');
     setIsEditingDescription(false);
@@ -180,12 +179,7 @@ export function TaskDetailPanel({ className }: TaskDetailPanelProps) {
     }, 100);
   }, [selectedTask?.id]);
 
-  // Auto-show question prompt when activeQuestion appears
-  useEffect(() => {
-    if (activeQuestion) {
-      setShowQuestionPrompt(true);
-    }
-  }, [activeQuestion]);
+  // No auto-show effect needed — question panel renders directly from activeQuestion prop
 
   // Listen for rewind-complete event
   useEffect(() => {
@@ -341,15 +335,13 @@ export function TaskDetailPanel({ className }: TaskDetailPanelProps) {
         currentFiles={isRunning ? currentAttemptFiles : undefined}
         isRunning={isRunning}
         activeQuestion={activeQuestion}
-        onOpenQuestion={() => {
-          if (activeQuestion) {
-            setShowQuestionPrompt(true);
-          } else {
+        onOpenQuestion={(isRunning || activeQuestion) ? () => {
+          if (!activeQuestion) {
             // activeQuestion not yet loaded — re-fetch from server
-            // useEffect on activeQuestion will show the prompt when it arrives
             refetchQuestion();
           }
-        }}
+          // Question panel renders automatically when activeQuestion is set
+        } : undefined}
       />
     </div>
   );
@@ -358,7 +350,7 @@ export function TaskDetailPanel({ className }: TaskDetailPanelProps) {
     <>
       <Separator />
       <div className="relative">
-        {showQuestionPrompt && activeQuestion ? (
+        {activeQuestion ? (
           <div className="border-t bg-muted/30">
             <QuestionPrompt
               key={activeQuestion.toolUseId}
@@ -368,11 +360,9 @@ export function TaskDetailPanel({ className }: TaskDetailPanelProps) {
                   moveTaskToInProgress(selectedTask.id);
                 }
                 answerQuestion(activeQuestion.questions, answers as Record<string, string>);
-                setShowQuestionPrompt(false);
               }}
               onCancel={() => {
                 cancelQuestion();
-                setShowQuestionPrompt(false);
               }}
             />
           </div>

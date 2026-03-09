@@ -170,9 +170,6 @@ async function proxyRequest(
     const contentType = response.headers.get('content-type') || '';
     log.info({ targetUrl, status: response.status }, 'End proxying request');
 
-    if (!response.ok) {
-      log.error({ targetUrl, status: response.status, statusText: response.statusText, requestBody: JSON.stringify(body), responseBody: JSON.stringify(await response.text()) }, 'Anthropic API error');
-    }
     const isStreaming = contentType.includes('text/event-stream');
 
     if (isStreaming && response.body) {
@@ -195,7 +192,12 @@ async function proxyRequest(
       }
     });
 
+    // Read body once to avoid "Body already been read" error
     const responseBody = await response.text();
+
+    if (!response.ok) {
+      log.error({ targetUrl, status: response.status, statusText: response.statusText, requestBody: JSON.stringify(body), responseBody: JSON.stringify(responseBody) }, 'Anthropic API error');
+    }
 
     // Cache successful count_tokens responses
     if (isCountTokens && method === 'POST' && response.ok && body) {

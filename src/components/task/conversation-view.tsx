@@ -77,6 +77,21 @@ function buildToolResultsMap(messages: ClaudeOutput[]): Map<string, { result: st
         });
       }
     }
+    // Also extract tool_results from user messages (CLI outputs tool_result inside user messages)
+    if (msg.type === 'user' && msg.message?.content && Array.isArray(msg.message.content)) {
+      for (const block of msg.message.content) {
+        if (block.type === 'tool_result') {
+          const toolUseId = (block as { tool_use_id?: string }).tool_use_id;
+          if (toolUseId) {
+            const content = (block as { content?: string }).content;
+            map.set(toolUseId, {
+              result: typeof content === 'string' ? content : JSON.stringify(content || ''),
+              isError: (block as { is_error?: boolean }).is_error || false,
+            });
+          }
+        }
+      }
+    }
   }
   return map;
 }
@@ -358,14 +373,20 @@ export function ConversationView({
     index: number,
     lastToolUseId: string | null,
     toolResultsMap: Map<string, { result: string; isError: boolean }>,
-    isStreaming: boolean
+    isStreaming: boolean,
+    allBlocks?: ClaudeContentBlock[]
   ) => {
     if (block.type === 'text' && block.text) {
       return <MessageBlock key={index} content={block.text} isStreaming={isStreaming} />;
     }
 
     if (block.type === 'thinking' && block.thinking) {
-      return <MessageBlock key={index} content={block.thinking} isThinking isStreaming={isStreaming} />;
+      // Thinking spinner should stop once a tool_use or text block appears after it
+      const hasLaterBlocks = allBlocks ? allBlocks.slice(index + 1).some(
+        b => b.type === 'tool_use' || (b.type === 'text' && b.text)
+      ) : false;
+      const isThinkingActive = isStreaming && !hasLaterBlocks;
+      return <MessageBlock key={index} content={block.thinking} isThinking isStreaming={isThinkingActive} />;
     }
 
     if (block.type === 'tool_use') {
@@ -404,7 +425,7 @@ export function ConversationView({
       return (
         <div key={(output as any)._msgId || index} className="space-y-1 w-full max-w-full overflow-hidden">
           {blocks.map((block, blockIndex) =>
-            renderContentBlock(block, blockIndex, lastToolUseId, toolResultsMap, isStreaming)
+            renderContentBlock(block, blockIndex, lastToolUseId, toolResultsMap, isStreaming, blocks)
           )}
         </div>
       );
@@ -475,7 +496,7 @@ export function ConversationView({
     return (
       <div key={`user-${turn.attemptId}`} className="flex flex-col items-end w-full max-w-full gap-1">
         <div className="bg-primary/10 rounded-lg px-4 py-3 text-[15px] leading-relaxed break-words space-y-3 max-w-[85%] overflow-hidden">
-          <div>{turn.prompt}</div>
+          <div className="whitespace-pre-wrap">{turn.prompt}</div>
         {turn.files && turn.files.length > 0 && (
           <div className="flex flex-wrap gap-2 pt-1">
             {turn.files.map((file) => (
@@ -596,7 +617,7 @@ export function ConversationView({
               {!filteredHistoricalTurns.some(t => t.attemptId === currentAttemptId && t.type === 'user') && currentPrompt && (
                 <div className="flex justify-end w-full max-w-full">
                   <div className="bg-primary/10 rounded-lg px-4 py-3 text-[15px] leading-relaxed break-words space-y-3 max-w-[85%] overflow-hidden">
-                    <div>{currentPrompt}</div>
+                    <div className="whitespace-pre-wrap">{currentPrompt}</div>
                   {currentFiles && currentFiles.length > 0 && (
                     <div className="flex flex-wrap gap-2 pt-1">
                       {currentFiles.map((file) => {

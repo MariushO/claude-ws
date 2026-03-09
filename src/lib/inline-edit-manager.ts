@@ -3,10 +3,11 @@
  *
  * Manages in-memory edit sessions, constructs prompts for Claude,
  * and streams responses via Socket.io.
+ * Uses CLI query utility for one-shot prompt→response.
  */
 
 import { EventEmitter } from 'events';
-import { query, type Query } from '@anthropic-ai/claude-agent-sdk';
+import { cliQuery } from './cli-query';
 import { generateLineDiff, type DiffResult } from './diff-generator';
 import { createLogger } from './logger';
 
@@ -33,7 +34,6 @@ export interface InlineEditRequest {
 interface EditSession {
   sessionId: string;
   controller: AbortController;
-  queryRef?: Query;  // SDK query reference for graceful close()
   buffer: string;
   startedAt: number;
 }
@@ -87,55 +87,24 @@ class InlineEditManager extends EventEmitter {
     const prompt = this.buildPrompt(language, selectedCode, instruction, beforeContext, afterContext);
 
     try {
-      const response = query({
+      const result = await cliQuery({
         prompt,
-        options: {
-          cwd: basePath,
-          model: 'sonnet', // Use Sonnet for faster responses on inline edits
-          permissionMode: 'bypassPermissions' as const,
-          ...(maxTurns ? { maxTurns } : {}),
-          abortController: controller,
+        cwd: basePath,
+        model: 'claude-sonnet-4-5-20250929', // Use Sonnet for faster inline edits
+        signal: controller.signal,
+        maxTurns,
+        onDelta: (text) => {
+          session.buffer += text;
+          this.emit('delta', { sessionId, chunk: text });
         },
       });
 
-      // Store query reference for graceful close() on cancel
-      session.queryRef = response;
-
-      for await (const message of response) {
-        if (controller.signal.aborted) {
-          log.debug({ sessionId }, 'Session aborted');
-          break;
-        }
-
-        // Handle streaming events (SDK wraps API deltas in stream_event)
-        if (message.type === 'stream_event') {
-          const streamMsg = message as { type: 'stream_event'; event: { type: string; delta?: { type: string; text?: string } } };
-          const event = streamMsg.event;
-          if (event?.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta.text) {
-            session.buffer += event.delta.text;
-            this.emit('delta', { sessionId, chunk: event.delta.text });
-          }
-        }
-
-        // Handle assistant messages for non-streaming responses
-        if (message.type === 'assistant') {
-          const assistantMsg = message as { type: 'assistant'; message?: { content: Array<{ type: string; text?: string }> } };
-          const content = assistantMsg.message?.content || [];
-          for (const block of content) {
-            if (block.type === 'text' && block.text) {
-              // Only add if we haven't streamed it
-              if (!session.buffer.includes(block.text)) {
-                session.buffer = block.text;
-              }
-            }
-          }
-        }
-      }
-
       if (!controller.signal.aborted) {
+        // Use streamed buffer or fall back to final result
+        const responseText = session.buffer || result.text;
+
         try {
-          // Extract code from response
-          const generatedCode = this.extractCode(session.buffer);
+          const generatedCode = this.extractCode(responseText);
           const diff = generateLineDiff(selectedCode, generatedCode);
 
           log.debug({ sessionId }, 'Session completed');
@@ -159,22 +128,13 @@ class InlineEditManager extends EventEmitter {
 
   /**
    * Cancel an edit session
-   * Uses SDK Query.close() for graceful termination, falls back to AbortController
    */
   cancelEdit(sessionId: string): boolean {
     const session = this.sessions.get(sessionId);
     if (!session) return false;
 
     log.debug({ sessionId }, 'Cancelling session');
-    if (session.queryRef) {
-      try {
-        session.queryRef.close();
-      } catch {
-        session.controller.abort();
-      }
-    } else {
-      session.controller.abort();
-    }
+    session.controller.abort();
     this.sessions.delete(sessionId);
     return true;
   }
@@ -264,11 +224,7 @@ Output the modified code now:`;
     for (const [sessionId, session] of this.sessions) {
       if (now - session.startedAt > this.sessionTimeout) {
         log.debug({ sessionId }, 'Cleaning up stale session');
-        if (session.queryRef) {
-          try { session.queryRef.close(); } catch { session.controller.abort(); }
-        } else {
-          session.controller.abort();
-        }
+        session.controller.abort();
         this.sessions.delete(sessionId);
       }
     }

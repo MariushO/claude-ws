@@ -346,7 +346,7 @@ export const ToolUseBlock = memo(function ToolUseBlock({ name, input, result, is
 
         {/* Tool name and target - allow wrapping */}
         <span className={cn('font-mono text-[13.5px] leading-6 min-w-0 flex-1', isError && 'text-destructive')}>
-          {isStreaming || (isAskUserQuestion && !result) ? (
+          {isStreaming || (isAskUserQuestion && !result && onOpenPanel) ? (
             <>
               {activeVerb} <span className="text-muted-foreground break-all">{displayText}</span>...
             </>

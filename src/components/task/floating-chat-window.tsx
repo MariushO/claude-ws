@@ -57,7 +57,6 @@ export function FloatingChatWindow({ task, zIndex, onClose, onMaximize, onFocus 
   const [hasSentFirstMessage, setHasSentFirstMessage] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [shellPanelExpanded, setShellPanelExpanded] = useState(false);
-  const [showQuestionPrompt, setShowQuestionPrompt] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState('');
 
@@ -135,12 +134,7 @@ export function FloatingChatWindow({ task, zIndex, onClose, onMaximize, onFocus 
     }
   }, [pendingAutoStartTask, pendingAutoStartPrompt, pendingAutoStartFileIds, task, isRunning, isConnected, setPendingAutoStartTask, startAttempt, setTaskChatInit, moveTaskToInProgress, getPendingFiles, clearFiles, getTaskModel]);
 
-  // Auto-show question prompt when activeQuestion appears
-  useEffect(() => {
-    if (activeQuestion) {
-      setShowQuestionPrompt(true);
-    }
-  }, [activeQuestion]);
+  // No auto-show effect needed — question panel renders directly from activeQuestion prop
 
   // Get current project context
   const currentProjectId = activeProjectId || selectedProjectIds[0] || task.projectId;
@@ -221,13 +215,11 @@ export function FloatingChatWindow({ task, zIndex, onClose, onMaximize, onFocus 
         currentFiles={isRunning ? currentAttemptFiles : undefined}
         isRunning={isRunning}
         activeQuestion={activeQuestion}
-        onOpenQuestion={() => {
-          if (activeQuestion) {
-            setShowQuestionPrompt(true);
-          } else {
+        onOpenQuestion={(isRunning || activeQuestion) ? () => {
+          if (!activeQuestion) {
             refetchQuestion();
           }
-        }}
+        } : undefined}
       />
     </div>
   );
@@ -236,32 +228,21 @@ export function FloatingChatWindow({ task, zIndex, onClose, onMaximize, onFocus 
     <>
       <Separator />
       <div className="relative">
-        {showQuestionPrompt && activeQuestion ? (
+        {activeQuestion ? (
           <div className="border-t bg-muted/30">
-            {activeQuestion ? (
-              <QuestionPrompt
-                key={activeQuestion.toolUseId}
-                questions={activeQuestion.questions}
-                onAnswer={(answers) => {
-                  if (task.status !== 'in_progress') {
-                    moveTaskToInProgress(task.id);
-                  }
-                  answerQuestion(activeQuestion.questions, answers as Record<string, string>);
-                  setShowQuestionPrompt(false);
-                }}
-                onCancel={() => {
-                  cancelQuestion();
-                  setShowQuestionPrompt(false);
-                }}
-              />
-            ) : (
-              <div className="py-8 px-4 text-center">
-                <div className="inline-flex items-center gap-2 text-muted-foreground text-sm">
-                  <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  <span>{tTask('loadingQuestion')}</span>
-                </div>
-              </div>
-            )}
+            <QuestionPrompt
+              key={activeQuestion.toolUseId}
+              questions={activeQuestion.questions}
+              onAnswer={(answers) => {
+                if (task.status !== 'in_progress') {
+                  moveTaskToInProgress(task.id);
+                }
+                answerQuestion(activeQuestion.questions, answers as Record<string, string>);
+              }}
+              onCancel={() => {
+                cancelQuestion();
+              }}
+            />
           </div>
         ) : shellPanelExpanded && currentProjectId ? (
           <ShellExpandedPanel

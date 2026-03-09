@@ -195,8 +195,10 @@ export const MessageBlock = memo(function MessageBlock({
           ) : (
             <ChevronRight className="size-3" />
           )}
-          <RunningDots />
-          <span className="font-mono text-[14px]" style={{ color: '#b9664a' }}>Thinking...</span>
+          {isStreaming && <RunningDots />}
+          <span className="font-mono text-[14px]" style={{ color: '#b9664a' }}>
+            {isStreaming ? 'Thinking...' : 'Thought'}
+          </span>
         </button>
 
         {isExpanded && (
