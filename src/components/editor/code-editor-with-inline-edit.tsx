@@ -3,37 +3,28 @@
 /**
  * CodeMirror Editor with Inline AI Editing Support
  *
- * Wraps CodeEditorWithDefinitions and adds inline AI edit functionality.
+ * Wraps CodeMirror and adds inline AI edit functionality,
+ * go-to-definition, and context mention support.
  * Press Ctrl/Cmd+I with selected code to trigger AI editing.
  */
 
-import { useMemo, useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, useState, useMemo } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
-import { oneDark } from '@codemirror/theme-one-dark';
 import { EditorView } from '@codemirror/view';
 import { useTheme } from 'next-themes';
-import { languages } from './languages';
-import { gotoDefinitionExtension, type ExtractedSymbol, type DefinitionInfo } from './extensions/goto-definition';
-import { markerLineHighlightExtension } from './extensions/marker-line-highlight';
-import { cursorSelectionDark, cursorSelectionLight } from './extensions/cursor-selection-theme';
 import {
-  inlineEditExtension,
   dispatchInlineDiff,
   type InlineEditSelection,
   type InlineEditDiffState,
 } from './extensions/inline-edit';
-import { addToContextExtension, type ContextSelection } from './extensions/add-to-context';
-import { DefinitionPopup } from './definition-popup';
-import { InlineEditDialog } from './inline-edit-dialog';
-import { SelectionMentionPopup } from './selection-mention-popup';
-import { useSidebarStore } from '@/stores/sidebar-store';
 import { useInlineEdit } from '@/hooks/use-inline-edit';
 import { useInlineEditStore } from '@/stores/inline-edit-store';
-import { useContextMentionStore } from '@/stores/context-mention-store';
-import { useTaskStore } from '@/stores/task-store';
-import { useState } from 'react';
-import { toast } from 'sonner';
-import { useTranslations } from 'next-intl';
+import { useDefinitionHandler } from './code-editor-definition-handler';
+import {
+  useInlineEditHandlers,
+  CodeEditorInlineEditOverlay,
+} from './code-editor-inline-edit-overlay';
+import { useEditorExtensions, BASIC_SETUP_OPTIONS } from './code-editor-extensions-builder';
 
 interface EditorPosition {
   lineNumber?: number;
@@ -76,26 +67,19 @@ export function CodeEditorWithInlineEdit({
   onSelectionChange,
 }: CodeEditorWithInlineEditProps) {
   const { theme } = useTheme();
-  const t = useTranslations('editor');
   const containerRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const [height, setHeight] = useState<number>(400);
 
-  // Definition popup state
-  const [definitionPopup, setDefinitionPopup] = useState<{
-    definition: DefinitionInfo | null;
-    position: { x: number; y: number } | null;
-  }>({ definition: null, position: null });
+  const isDarkTheme = theme?.includes('dark') || false;
 
-  // Sidebar store for navigation
-  const { openTab, setEditorPosition, setSelectedFile, expandFolder } = useSidebarStore();
-
-  // Inline edit store
-  const { getSession } = useInlineEditStore();
-
-  // Context mention store
-  const { addLineMention } = useContextMentionStore();
-  const { selectedTaskId } = useTaskStore();
+  // Definition handler (go-to-definition, symbol lookup)
+  const definitionHandler = useDefinitionHandler({
+    filePath,
+    basePath,
+    language,
+    fileContent: value,
+  });
 
   // Get screen position for selection (for popup positioning)
   const getSelectionPosition = useCallback(() => {
@@ -120,7 +104,6 @@ export function CodeEditorWithInlineEdit({
         const view = editorViewRef.current;
         if (!view) return;
 
-        // Replace the selected code with generated code
         view.dispatch({
           changes: {
             from: selection.from,
@@ -129,10 +112,8 @@ export function CodeEditorWithInlineEdit({
           },
         });
 
-        // Clear the diff preview
         dispatchInlineDiff(view, null);
 
-        // Trigger onChange to update parent state
         const newDoc = view.state.doc.toString();
         onChange(newDoc);
       },
@@ -146,8 +127,40 @@ export function CodeEditorWithInlineEdit({
     }, []),
   });
 
-  // Check if current theme is a dark theme
-  const isDarkTheme = theme?.includes('dark') || false;
+  // Inline edit and context mention handlers
+  const inlineEditHandlers = useInlineEditHandlers({ filePath, inlineEdit });
+
+  // Stable references for extensions builder
+  const definitionHandlers = useMemo(() => ({
+    handleDefinitionRequest: definitionHandler.handleDefinitionRequest,
+    handleNavigate: definitionHandler.handleNavigate,
+    handleShowPreview: definitionHandler.handleShowPreview,
+    handleHidePreview: definitionHandler.handleHidePreview,
+  }), [definitionHandler.handleDefinitionRequest, definitionHandler.handleNavigate, definitionHandler.handleShowPreview, definitionHandler.handleHidePreview]);
+
+  const editHandlers = useMemo(() => ({
+    handleEditRequest: inlineEditHandlers.handleEditRequest,
+    handleAccept: inlineEditHandlers.handleAccept,
+    handleReject: inlineEditHandlers.handleReject,
+  }), [inlineEditHandlers.handleEditRequest, inlineEditHandlers.handleAccept, inlineEditHandlers.handleReject]);
+
+  // Build CodeMirror extensions
+  const extensions = useEditorExtensions({
+    language,
+    isDarkTheme,
+    enableDefinitions,
+    enableInlineEdit,
+    filePath,
+    basePath,
+    readOnly,
+    onSelectionChange,
+    definitionHandlers,
+    inlineEditHandlers: editHandlers,
+    handleAddToContext: inlineEditHandlers.handleAddToContext,
+  });
+
+  // Inline edit store for diff preview
+  const { getSession } = useInlineEditStore();
 
   // Calculate actual container height for proper scrolling
   useEffect(() => {
@@ -196,30 +209,6 @@ export function CodeEditorWithInlineEdit({
     }, 100);
   }, [editorPosition, focusOnNavigate]);
 
-  // Create selection listener extension
-  const selectionListenerExtension = useMemo(() => {
-    if (!onSelectionChange) return [];
-
-    return EditorView.updateListener.of((update) => {
-      if (update.selectionSet) {
-        const selection = update.state.selection.main;
-
-        // If no selection or cursor only, report null
-        if (selection.empty) {
-          onSelectionChange(null);
-          return;
-        }
-
-        // Get line numbers
-        const doc = update.state.doc;
-        const startLine = doc.lineAt(selection.from).number;
-        const endLine = doc.lineAt(selection.to).number;
-
-        onSelectionChange({ startLine, endLine });
-      }
-    });
-  }, [onSelectionChange]);
-
   // Update diff preview when session changes
   const session = filePath ? getSession(filePath) : null;
   const sessionStatus = session?.status;
@@ -244,230 +233,6 @@ export function CodeEditorWithInlineEdit({
     }
   }, [sessionStatus, sessionDiff, sessionGeneratedCode, sessionSelection, sessionOriginalCode]);
 
-  // Handle definition request
-  const handleDefinitionRequest = useCallback(
-    async (symbol: ExtractedSymbol): Promise<DefinitionInfo | null> => {
-      if (!filePath || !basePath) {
-        return null;
-      }
-
-      try {
-        const response = await fetch('/api/language/definition', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            basePath,
-            filePath,
-            symbol: symbol.text,
-            line: symbol.line,
-            column: symbol.column,
-            language,
-            fileContent: value,
-          }),
-        });
-
-        if (!response.ok) {
-          const error = await response.json();
-          return { found: false, error: error.error || 'Failed to resolve definition' };
-        }
-
-        return await response.json();
-      } catch (error) {
-        return {
-          found: false,
-          error: error instanceof Error ? error.message : 'Network error',
-        };
-      }
-    },
-    [filePath, basePath, language, value]
-  );
-
-  // Handle navigation to definition
-  const handleNavigate = useCallback(
-    (definition: DefinitionInfo) => {
-      if (!definition.found || !definition.definition) return;
-
-      const { filePath: defPath, line, column, symbol } = definition.definition;
-
-      const parts = defPath.split('/');
-      let currentPath = '';
-      for (let i = 0; i < parts.length - 1; i++) {
-        currentPath += (i > 0 ? '/' : '') + parts[i];
-        expandFolder(currentPath);
-      }
-
-      openTab(defPath);
-      setSelectedFile(defPath);
-      setEditorPosition({
-        lineNumber: line,
-        column: column,
-        matchLength: symbol.length,
-      });
-    },
-    [openTab, setSelectedFile, setEditorPosition, expandFolder]
-  );
-
-  // Handle show preview popup
-  const handleShowPreview = useCallback(
-    (definition: DefinitionInfo, position: { x: number; y: number }) => {
-      setDefinitionPopup({ definition, position });
-    },
-    []
-  );
-
-  // Handle hide preview popup
-  const handleHidePreview = useCallback(() => {
-    setDefinitionPopup({ definition: null, position: null });
-  }, []);
-
-  // Handle inline edit request (Ctrl+I)
-  const handleEditRequest = useCallback(
-    (selection: InlineEditSelection) => {
-      inlineEdit.startEdit(selection);
-    },
-    [inlineEdit]
-  );
-
-  // Handle accept from extension
-  const handleAccept = useCallback(() => {
-    inlineEdit.accept();
-  }, [inlineEdit]);
-
-  // Handle reject from extension
-  const handleReject = useCallback(() => {
-    inlineEdit.reject();
-  }, [inlineEdit]);
-
-  // Handle add to context (Cmd+L)
-  const handleAddToContext = useCallback(
-    (selection: ContextSelection) => {
-      if (!selectedTaskId) {
-        toast.error(t('selectTaskFirst'));
-        return;
-      }
-
-      addLineMention(
-        selectedTaskId,
-        selection.fileName,
-        selection.filePath,
-        selection.startLine,
-        selection.endLine
-      );
-
-      const lineRange = selection.startLine === selection.endLine
-        ? `L${selection.startLine}`
-        : `L${selection.startLine}-${selection.endLine}`;
-      toast.success(`Added @${selection.fileName}#${lineRange} to context`);
-    },
-    [selectedTaskId, addLineMention]
-  );
-
-  // Handle add selection via popup click
-  const handleAddSelectionToContext = useCallback(
-    (startLine: number, endLine: number) => {
-      if (!filePath) return;
-      if (!selectedTaskId) {
-        toast.error(t('selectTaskFirst'));
-        return;
-      }
-
-      const fileName = filePath.split('/').pop() || filePath;
-
-      addLineMention(selectedTaskId, fileName, filePath, startLine, endLine);
-
-      const lineRange = startLine === endLine
-        ? `L${startLine}`
-        : `L${startLine}-${endLine}`;
-      toast.success(`Added @${fileName}#${lineRange} to context`);
-    },
-    [filePath, selectedTaskId, addLineMention]
-  );
-
-  // Build extensions
-  const extensions = useMemo(() => {
-    const langExtension = language ? languages[language] : null;
-
-    const baseExtensions = [
-      // Enable line wrapping
-      EditorView.lineWrapping,
-      EditorView.theme({
-        '&': { backgroundColor: 'transparent !important' },
-        '.cm-scroller': { backgroundColor: 'transparent !important' },
-        '.cm-content': { backgroundColor: 'transparent !important' },
-        '.cm-line': { backgroundColor: 'transparent !important' },
-        '.cm-layer': { backgroundColor: 'transparent !important' },
-        '.cm-gutters': { backgroundColor: 'rgb(255 255 255 / 3%) !important' },
-        '.cm-lineNumbers': { backgroundColor: 'rgb(255 255 255 / 3%) !important' },
-        '.cm-lineNumbers .cm-gutterElement': { backgroundColor: 'rgb(255 255 255 / 3%) !important' },
-      }),
-      ...(isDarkTheme ? [oneDark, cursorSelectionDark] : [cursorSelectionLight]),
-      // Highlight marker lines (>>>>> and <<<<<)
-      ...markerLineHighlightExtension,
-      ...(langExtension ? [langExtension()] : []),
-    ];
-
-    // Add go-to-definition extension
-    if (enableDefinitions && filePath && basePath) {
-      baseExtensions.push(
-        gotoDefinitionExtension({
-          onDefinitionRequest: handleDefinitionRequest,
-          onNavigate: handleNavigate,
-          onShowPreview: handleShowPreview,
-          onHidePreview: handleHidePreview,
-          enabled: true,
-        })
-      );
-    }
-
-    // Add inline edit extension
-    if (enableInlineEdit && filePath && basePath && !readOnly) {
-      baseExtensions.push(
-        inlineEditExtension({
-          onEditRequest: handleEditRequest,
-          onAccept: handleAccept,
-          onReject: handleReject,
-          enabled: true,
-        })
-      );
-    }
-
-    // Add context (Cmd+L) extension - always enabled when filePath exists
-    if (filePath) {
-      baseExtensions.push(
-        addToContextExtension({
-          onAddToContext: handleAddToContext,
-          filePath,
-          enabled: true,
-        })
-      );
-    }
-
-    // Add selection listener if callback provided
-    if (onSelectionChange) {
-      baseExtensions.push(selectionListenerExtension);
-    }
-
-    return baseExtensions;
-  }, [
-    language,
-    isDarkTheme,
-    enableDefinitions,
-    enableInlineEdit,
-    filePath,
-    basePath,
-    readOnly,
-    handleDefinitionRequest,
-    handleNavigate,
-    handleShowPreview,
-    handleHidePreview,
-    handleEditRequest,
-    handleAccept,
-    handleReject,
-    handleAddToContext,
-    selectionListenerExtension,
-  ]);
-
-  // Capture editor view when created
   const handleCreateEditor = useCallback((view: EditorView) => {
     editorViewRef.current = view;
   }, []);
@@ -481,56 +246,17 @@ export function CodeEditorWithInlineEdit({
         onChange={onChange}
         readOnly={readOnly}
         onCreateEditor={handleCreateEditor}
-        basicSetup={{
-          lineNumbers: true,
-          highlightActiveLineGutter: true,
-          highlightSpecialChars: true,
-          foldGutter: true,
-          drawSelection: true,
-          dropCursor: true,
-          allowMultipleSelections: true,
-          indentOnInput: true,
-          syntaxHighlighting: true,
-          bracketMatching: true,
-          closeBrackets: true,
-          autocompletion: true,
-          rectangularSelection: true,
-          crosshairCursor: true,
-          highlightActiveLine: true,
-          highlightSelectionMatches: true,
-          closeBracketsKeymap: true,
-          searchKeymap: false,
-          foldKeymap: true,
-          completionKeymap: true,
-          lintKeymap: true,
-        }}
+        basicSetup={BASIC_SETUP_OPTIONS}
       />
 
-      {/* Definition popup */}
-      <DefinitionPopup
-        definition={definitionPopup.definition}
-        position={definitionPopup.position}
-        onClose={handleHidePreview}
+      <CodeEditorInlineEditOverlay
+        filePath={filePath}
+        containerRef={containerRef}
+        editorViewRef={editorViewRef}
+        inlineEdit={inlineEdit}
+        definitionPopup={definitionHandler.definitionPopup}
+        onHidePreview={definitionHandler.handleHidePreview}
       />
-
-      {/* Inline edit dialog */}
-      {filePath && (
-        <InlineEditDialog
-          filePath={filePath}
-          onSubmit={inlineEdit.submitInstruction}
-          onAccept={inlineEdit.accept}
-          onReject={inlineEdit.reject}
-        />
-      )}
-
-      {/* Selection mention popup */}
-      {filePath && (
-        <SelectionMentionPopup
-          containerRef={containerRef}
-          editorViewRef={editorViewRef}
-          onAddToContext={handleAddSelectionToContext}
-        />
-      )}
     </div>
   );
 }
