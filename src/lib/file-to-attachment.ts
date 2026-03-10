@@ -3,7 +3,8 @@
  * Reads file content via API and converts to File blob for attachment store
  */
 
-import { EXTENSION_MIME_MAP, MAX_FILE_SIZE } from './file-utils';
+import { MAX_FILE_SIZE } from './file-utils';
+import { getContentTypeForExtension } from '@/lib/content-types';
 import { extname, basename } from 'path';
 
 interface FileContentResponse {
@@ -54,7 +55,8 @@ export async function createFileFromPath(
 
   // Determine MIME type
   const ext = extname(filePath).toLowerCase();
-  const mimeType = EXTENSION_MIME_MAP[ext] || data.mimeType || 'text/plain';
+  const resolved = getContentTypeForExtension(ext);
+  const mimeType = resolved !== 'application/octet-stream' ? resolved : (data.mimeType || 'text/plain');
 
   // Create File blob
   const blob = new Blob([data.content], { type: mimeType });

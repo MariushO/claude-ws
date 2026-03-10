@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { getContentTypeForExtension } from '@/lib/content-types';
 
 // Max file size: 10MB
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -137,7 +138,7 @@ export async function GET(request: NextRequest) {
         language: null,
         size: stats.size,
         isBinary: true,
-        mimeType: getMimeType(ext),
+        mimeType: getContentTypeForExtension(ext),
         mtime: mtimeMs,
       });
     }
@@ -151,7 +152,7 @@ export async function GET(request: NextRequest) {
       language,
       size: stats.size,
       isBinary: false,
-      mimeType: getMimeType(ext),
+      mimeType: getContentTypeForExtension(ext),
       mtime: mtimeMs,
     });
   } catch (error) {
@@ -161,24 +162,6 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-function getMimeType(ext: string): string {
-  const mimeTypes: Record<string, string> = {
-    '.html': 'text/html',
-    '.css': 'text/css',
-    '.js': 'application/javascript',
-    '.json': 'application/json',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.gif': 'image/gif',
-    '.svg': 'image/svg+xml',
-    '.pdf': 'application/pdf',
-    '.txt': 'text/plain',
-    '.md': 'text/markdown',
-  };
-  return mimeTypes[ext] || 'application/octet-stream';
 }
 
 function detectLanguage(filePath: string): string | null {

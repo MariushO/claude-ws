@@ -1,4 +1,5 @@
 import { join, extname } from 'path';
+import { getContentTypeForExtension } from '@/lib/content-types';
 
 const _userCwd = process.env.CLAUDE_WS_USER_CWD || process.cwd();
 const _dataDir = process.env.DATA_DIR || join(_userCwd, 'data');
@@ -29,26 +30,6 @@ export const ALLOWED_TYPES = [
   'application/xml',
 ];
 
-// File extension to MIME type mapping for detection
-export const EXTENSION_MIME_MAP: Record<string, string> = {
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.pdf': 'application/pdf',
-  '.txt': 'text/plain',
-  '.md': 'text/markdown',
-  '.ts': 'text/typescript',
-  '.tsx': 'text/typescript',
-  '.js': 'text/javascript',
-  '.jsx': 'text/javascript',
-  '.json': 'application/json',
-  '.css': 'text/css',
-  '.html': 'text/html',
-  '.xml': 'application/xml',
-};
-
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
 export const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB per attempt
 
@@ -56,10 +37,11 @@ export const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB per attempt
 export function validateFile(file: File): { valid: boolean; error?: string } {
   // Check MIME type
   const ext = extname(file.name).toLowerCase();
-  const expectedMime = EXTENSION_MIME_MAP[ext];
+  const expectedMime = getContentTypeForExtension(ext);
+  const hasKnownExtension = expectedMime !== 'application/octet-stream';
 
-  // Allow if MIME matches expected for extension, or is in allowed list
-  if (!expectedMime && !ALLOWED_TYPES.includes(file.type)) {
+  // Allow if extension is recognized, or MIME is in allowed list
+  if (!hasKnownExtension && !ALLOWED_TYPES.includes(file.type)) {
     return { valid: false, error: `Invalid file type: ${file.type}` };
   }
 
@@ -101,7 +83,7 @@ export function getExtension(filename: string): string {
 // Get MIME type from filename
 export function getMimeType(filename: string): string {
   const ext = extname(filename).toLowerCase();
-  return EXTENSION_MIME_MAP[ext] || 'application/octet-stream';
+  return getContentTypeForExtension(ext);
 }
 
 // Check if file is an image

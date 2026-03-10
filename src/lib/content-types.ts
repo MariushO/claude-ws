@@ -1,4 +1,5 @@
-// Content type mapping for file formats
+// Canonical MIME type mapping for file formats.
+// All MIME lookups in the project should use this module.
 
 const contentTypes: Record<string, string> = {
   // Data formats
@@ -12,10 +13,19 @@ const contentTypes: Record<string, string> = {
 
   // Web formats
   html: 'text/html',
+  htm: 'text/html',
   css: 'text/css',
   js: 'application/javascript',
+  jsx: 'application/javascript',
+  mjs: 'application/javascript',
+  cjs: 'application/javascript',
   ts: 'application/typescript',
+  tsx: 'application/typescript',
   md: 'text/markdown',
+  mdx: 'text/markdown',
+  scss: 'text/css',
+  sass: 'text/css',
+  less: 'text/css',
 
   // Office documents
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -32,9 +42,11 @@ const contentTypes: Record<string, string> = {
   tar: 'application/x-tar',
   gz: 'application/gzip',
 
-  // Executables
+  // Executables / shared libraries
   exe: 'application/vnd.microsoft.portable-executable',
   dll: 'application/vnd.microsoft.portable-executable',
+  so: 'application/octet-stream',
+  dylib: 'application/octet-stream',
   app: 'application/octet-stream',
 
   // Images
@@ -45,6 +57,12 @@ const contentTypes: Record<string, string> = {
   svg: 'image/svg+xml',
   webp: 'image/webp',
   ico: 'image/x-icon',
+
+  // Fonts
+  woff: 'font/woff',
+  woff2: 'font/woff2',
+  ttf: 'font/ttf',
+  eot: 'application/vnd.ms-fontobject',
 
   // Video
   mp4: 'video/mp4',
@@ -62,10 +80,19 @@ const contentTypes: Record<string, string> = {
 };
 
 /**
- * Get the content type for a given file format/extension
+ * Get the content type for a given file format/extension.
  * @param format - File extension without the dot (e.g., 'json', 'xml', 'md')
  * @returns MIME type string, defaults to 'application/octet-stream' if unknown
  */
 export function getContentTypeForFormat(format: string): string {
   return contentTypes[format.toLowerCase()] || 'application/octet-stream';
+}
+
+/**
+ * Get the content type for a dotted file extension (e.g., '.json', '.ts').
+ * Strips the leading dot and delegates to the canonical map.
+ */
+export function getContentTypeForExtension(ext: string): string {
+  const format = ext.startsWith('.') ? ext.slice(1) : ext;
+  return getContentTypeForFormat(format);
 }

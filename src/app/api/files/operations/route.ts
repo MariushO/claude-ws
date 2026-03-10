@@ -5,6 +5,7 @@ import path from 'path';
 import os from 'os';
 import AdmZip from 'adm-zip';
 import { createLogger } from '@/lib/logger';
+import { getContentTypeForExtension } from '@/lib/content-types';
 
 const log = createLogger('FileOperations');
 
@@ -187,26 +188,7 @@ export async function POST(request: NextRequest) {
 
       // Determine MIME type based on extension
       const ext = path.extname(filename).toLowerCase();
-      const mimeTypes: Record<string, string> = {
-        '.txt': 'text/plain',
-        '.md': 'text/markdown',
-        '.json': 'application/json',
-        '.js': 'text/javascript',
-        '.ts': 'text/typescript',
-        '.tsx': 'text/typescript',
-        '.jsx': 'text/javascript',
-        '.html': 'text/html',
-        '.css': 'text/css',
-        '.xml': 'application/xml',
-        '.pdf': 'application/pdf',
-        '.png': 'image/png',
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.gif': 'image/gif',
-        '.svg': 'image/svg+xml',
-        '.zip': 'application/zip',
-      };
-      const contentType = mimeTypes[ext] || 'application/octet-stream';
+      const contentType = getContentTypeForExtension(ext);
 
       // Return file with download headers
       return new NextResponse(new Uint8Array(fileBuffer), {
