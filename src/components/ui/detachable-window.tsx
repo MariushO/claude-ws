@@ -5,6 +5,8 @@ import { X, GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useIsMobileViewport } from '@/hooks/use-mobile-viewport';
+import { loadWindowData, saveWindowData, MIN_WIDTH, MIN_HEIGHT } from '@/components/ui/detachable-window-storage';
+import { DetachableWindowResizeHandles, type ResizeDirection } from '@/components/ui/detachable-window-resize-handles';
 
 interface DetachableWindowProps {
   isOpen: boolean;
@@ -26,89 +28,6 @@ interface DetachableWindowProps {
 
 const DEFAULT_SIZE = { width: 500, height: 800 };
 const HEADER_HEIGHT = 48;
-const STORAGE_KEY_PREFIX = 'detachable-window-';
-const MIN_WIDTH = 400;
-const MIN_HEIGHT = 300;
-const RESIZE_HANDLE_SIZE = 12;
-
-interface StoredWindowData {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' | null;
-
-// Calculate bottom center position
-function getBottomCenterPosition(width: number, height: number): { x: number; y: number } {
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-
-  return {
-    x: (viewportWidth - width) / 2,
-    y: viewportHeight - height - 20, // 20px padding from bottom
-  };
-}
-
-// Load window data (position + size) from localStorage
-function loadWindowData(
-  storageKey: string,
-  defaultSize: { width: number; height: number }
-): { position: { x: number; y: number }; size: { width: number; height: number } } {
-  if (typeof window === 'undefined') {
-    return {
-      position: getBottomCenterPosition(defaultSize.width, defaultSize.height),
-      size: defaultSize,
-    };
-  }
-
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY_PREFIX + storageKey);
-    if (saved) {
-      const parsed = JSON.parse(saved) as StoredWindowData;
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-
-      // Validate size is within reasonable bounds
-      const validWidth = Math.max(MIN_WIDTH, Math.min(parsed.width, viewportWidth));
-      const validHeight = Math.max(MIN_HEIGHT, Math.min(parsed.height, viewportHeight));
-
-      // Validate position is within viewport
-      const validX = Math.max(0, Math.min(parsed.x, viewportWidth - validWidth));
-      const validY = Math.max(0, Math.min(parsed.y, viewportHeight - validHeight));
-
-      return {
-        position: { x: validX, y: validY },
-        size: { width: validWidth, height: validHeight },
-      };
-    }
-  } catch {
-    // Ignore storage errors
-  }
-
-  return {
-    position: getBottomCenterPosition(defaultSize.width, defaultSize.height),
-    size: defaultSize,
-  };
-}
-
-// Save window data (position + size) to localStorage
-function saveWindowData(storageKey: string, position: { x: number; y: number }, size: { width: number; height: number }) {
-  if (typeof window === 'undefined') return;
-
-  try {
-    const data: StoredWindowData = {
-      x: Math.round(position.x),
-      y: Math.round(position.y),
-      width: Math.round(size.width),
-      height: Math.round(size.height),
-    };
-    localStorage.setItem(STORAGE_KEY_PREFIX + storageKey, JSON.stringify(data));
-  } catch {
-    // Ignore storage errors
-  }
-}
 
 export function DetachableWindow({
   isOpen,
@@ -162,10 +81,7 @@ export function DetachableWindow({
 
   const handleDragStart = (e: React.MouseEvent) => {
     if (isMobile) return;
-    // Only drag from header area
-    if ((e.target as HTMLElement).closest('[data-no-drag]')) {
-      return;
-    }
+    if ((e.target as HTMLElement).closest('[data-no-drag]')) return;
 
     setIsDragging(true);
     dragStartPos.current = { x: e.clientX, y: e.clientY };
@@ -183,14 +99,6 @@ export function DetachableWindow({
     dragStartPosition.current = { ...position };
   };
 
-  const updatePosition = (newPosition: { x: number; y: number }) => {
-    setWindowState((prev) => ({ ...prev, position: newPosition }));
-  };
-
-  const updateSize = (newSize: { width: number; height: number }) => {
-    setWindowState((prev) => ({ ...prev, size: newSize }));
-  };
-
   // Handle dragging (desktop only)
   useEffect(() => {
     if (!isDragging || isMobile) return;
@@ -199,16 +107,14 @@ export function DetachableWindow({
     const handleMouseMove = (e: MouseEvent) => {
       const dx = e.clientX - dragStartPos.current.x;
       const dy = e.clientY - dragStartPos.current.y;
-
-      updatePosition({
-        x: startPos.x + dx,
-        y: startPos.y + dy,
-      });
+      setWindowState((prev) => ({
+        ...prev,
+        position: { x: startPos.x + dx, y: startPos.y + dy },
+      }));
     };
 
     const handleMouseUp = () => {
       setIsDragging(false);
-      // Get current state for saving
       setWindowState((current) => {
         saveWindowData(storageKey, current.position, current.size);
         return current;
@@ -237,7 +143,6 @@ export function DetachableWindow({
       const startSize = dragStartSize.current;
       const startPos = dragStartPosition.current;
 
-      // Handle horizontal resizing
       if (resizeDirection.includes('e')) {
         newSize.width = Math.max(MIN_WIDTH, startSize.width + dx);
       }
@@ -246,8 +151,6 @@ export function DetachableWindow({
         newSize.width = newWidth;
         newPos.x = startPos.x + (startSize.width - newWidth);
       }
-
-      // Handle vertical resizing
       if (resizeDirection.includes('s')) {
         newSize.height = Math.max(MIN_HEIGHT, startSize.height + dy);
       }
@@ -262,7 +165,6 @@ export function DetachableWindow({
 
     const handleMouseUp = () => {
       setResizeDirection(null);
-      // Get current state for saving
       setWindowState((current) => {
         saveWindowData(storageKey, current.position, current.size);
         return current;
@@ -289,7 +191,6 @@ export function DetachableWindow({
     let newPos = { ...position };
     let newSize = { ...size };
 
-    // Constrain size
     if (size.width > viewportWidth) {
       newSize.width = viewportWidth;
       needsUpdate = true;
@@ -298,8 +199,6 @@ export function DetachableWindow({
       newSize.height = viewportHeight;
       needsUpdate = true;
     }
-
-    // Constrain position
     if (position.x < 0) {
       newPos.x = 0;
       needsUpdate = true;
@@ -325,7 +224,6 @@ export function DetachableWindow({
 
   if (!isOpenState) return null;
 
-  // Handle bringing window to front on mousedown
   const handleWindowFocus = () => {
     onFocus?.();
   };
@@ -340,7 +238,6 @@ export function DetachableWindow({
           className
         )}
       >
-        {/* Header - no drag */}
         <div
           className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 select-none gap-2 relative"
           style={{ height: `${HEADER_HEIGHT}px` }}
@@ -367,7 +264,6 @@ export function DetachableWindow({
           </div>
         </div>
 
-        {/* Content */}
         <div className="flex flex-col flex-1 overflow-hidden">
           <div ref={contentScrollRef} className="flex-1 overflow-auto" data-detached-scroll-container>
             {children}
@@ -450,88 +346,7 @@ export function DetachableWindow({
         )}
       </div>
 
-      {/* Resize Handles - 4 Corners */}
-      {/* Top-Left */}
-      <div
-        className="absolute top-0 left-0 cursor-nwse-resize hover:opacity-100 opacity-50 transition-opacity"
-        style={{
-          width: `${RESIZE_HANDLE_SIZE}px`,
-          height: `${RESIZE_HANDLE_SIZE}px`,
-          background: 'linear-gradient(135deg, hsl(var(--border)) 50%, transparent 50%)',
-        }}
-        onMouseDown={(e) => handleResizeStart('nw', e)}
-      />
-      {/* Top-Right */}
-      <div
-        className="absolute top-0 right-0 cursor-nesw-resize hover:opacity-100 opacity-50 transition-opacity"
-        style={{
-          width: `${RESIZE_HANDLE_SIZE}px`,
-          height: `${RESIZE_HANDLE_SIZE}px`,
-          background: 'linear-gradient(-135deg, hsl(var(--border)) 50%, transparent 50%)',
-        }}
-        onMouseDown={(e) => handleResizeStart('ne', e)}
-      />
-      {/* Bottom-Left */}
-      <div
-        className="absolute bottom-0 left-0 cursor-nesw-resize hover:opacity-100 opacity-50 transition-opacity"
-        style={{
-          width: `${RESIZE_HANDLE_SIZE}px`,
-          height: `${RESIZE_HANDLE_SIZE}px`,
-          background: 'linear-gradient(45deg, hsl(var(--border)) 50%, transparent 50%)',
-        }}
-        onMouseDown={(e) => handleResizeStart('sw', e)}
-      />
-      {/* Bottom-Right */}
-      <div
-        className="absolute bottom-0 right-0 cursor-nwse-resize hover:opacity-100 opacity-50 transition-opacity"
-        style={{
-          width: `${RESIZE_HANDLE_SIZE}px`,
-          height: `${RESIZE_HANDLE_SIZE}px`,
-          background: 'linear-gradient(-45deg, hsl(var(--border)) 50%, transparent 50%)',
-        }}
-        onMouseDown={(e) => handleResizeStart('se', e)}
-      />
-      {/* Resize Handles - 4 Edges */}
-      {/* Top */}
-      <div
-        className="absolute top-0 left-0 right-0 cursor-ns-resize hover:opacity-100 opacity-0 transition-opacity"
-        style={{
-          height: '8px',
-          marginTop: '-4px',
-          background: 'transparent',
-        }}
-        onMouseDown={(e) => handleResizeStart('n', e)}
-      />
-      {/* Bottom */}
-      <div
-        className="absolute bottom-0 left-0 right-0 cursor-ns-resize hover:opacity-100 opacity-0 transition-opacity"
-        style={{
-          height: '8px',
-          marginBottom: '-4px',
-          background: 'transparent',
-        }}
-        onMouseDown={(e) => handleResizeStart('s', e)}
-      />
-      {/* Left */}
-      <div
-        className="absolute top-0 bottom-0 left-0 cursor-ew-resize hover:opacity-100 opacity-0 transition-opacity"
-        style={{
-          width: '8px',
-          marginLeft: '-4px',
-          background: 'transparent',
-        }}
-        onMouseDown={(e) => handleResizeStart('w', e)}
-      />
-      {/* Right */}
-      <div
-        className="absolute top-0 bottom-0 right-0 cursor-ew-resize hover:opacity-100 opacity-0 transition-opacity"
-        style={{
-          width: '8px',
-          marginRight: '-4px',
-          background: 'transparent',
-        }}
-        onMouseDown={(e) => handleResizeStart('e', e)}
-      />
+      <DetachableWindowResizeHandles onResizeStart={handleResizeStart} />
     </div>
   );
 }
