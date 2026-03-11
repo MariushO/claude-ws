@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyApiKey, unauthorizedResponse } from '@/lib/api-auth';
 import { existsSync } from 'fs';
-import { generatePluginFile, getPluginPath, pluginExists } from '@agentic-sdk/services/agent-factory-plugin-file-generator-service';
-import { createAgentFactoryService } from '@agentic-sdk/services/agent-factory-plugin-registry-service';
+import { generatePluginFile, getPluginPath, pluginExists } from '@agentic-sdk/services/agent-factory/plugin-file-generator';
+import { createAgentFactoryService } from '@agentic-sdk/services/agent-factory/plugin-registry';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('AFPlugins');

@@ -564,105 +564,140 @@ module.exports = {
 - Uses Cloudflare `cloudflared` binary
 - Allows remote access without port forwarding
 
-## Agentic SDK Backend Architecture (v0.3.100+)
+## Agentic SDK: Canonical Import Path & Services
 
 **Location:** `packages/agentic-sdk/`
 
 ### Purpose
-Standalone Fastify server providing a pure REST + SSE API for programmatic access, CI/CD integration, and automation without UI.
+Standalone Fastify server + shared service library providing REST + SSE API for programmatic access, CI/CD integration, and automation. The SDK barrel (`packages/agentic-sdk/src/index.ts`) is the **canonical import path** for all business logic.
 
-### Key Components
+### SDK Barrel Export Pattern
 
-#### Server Entry Point
-**File:** `packages/agentic-sdk/bin/server-entrypoint.ts`
+**File:** `packages/agentic-sdk/src/index.ts` (public API)
 
-- Initializes Fastify instance
-- Registers CORS and multipart plugins
-- Mounts shared service routes
-- Listens on port 3100 (configurable)
-- No Socket.io dependency
+All services are factory functions returning method objects:
 
-#### Shared Services
-**Location:** `packages/agentic-sdk/services/`
-
-Services used by both Next.js API routes and Fastify server:
-
-| Service | Purpose | Usage |
-|---------|---------|-------|
-| `task-crud-and-reorder-service` | Task CRUD, reordering, attempt queries | Both |
-| `checkpoint-service` | Create, restore, fork checkpoints | Both |
-| `file-service` | Upload, download, ZIP creation | Both |
-| `git-service` | Status, commit, diff, branch operations | Both |
-| `terminal-service` | Shell creation and management | Both |
-
-**Service Pattern:**
 ```typescript
-// packages/agentic-sdk/services/task-crud-and-reorder-service.ts
-export function createTaskService(db: Database) {
-  return {
-    getById: (id: string) => { /* ... */ },
-    getAll: (projectId: string) => { /* ... */ },
-    create: (data: NewTask) => { /* ... */ },
-    update: (id: string, data) => { /* ... */ },
-    delete: (id: string) => { /* ... */ },
-    getAttempts: (taskId: string) => { /* ... */ },
-    reorder: (tasks: Task[]) => { /* ... */ },
-  };
+import {
+  createProjectService,
+  createTaskService,
+  createAttemptService,
+  createCheckpointService,
+  createFileService,
+  createSearchService,
+  createShellService,
+  createCommandService,
+  createAgentFactoryService,
+  // ...and 15+ more services
+} from '@agentic-sdk';
+
+const projectService = createProjectService(db);
+const task = await projectService.getById(projectId);
+```
+
+### All 11 API Domains Covered
+
+| Domain | Services | Purpose |
+|--------|----------|---------|
+| **Projects** | `createProjectService` | Project CRUD, settings |
+| **Tasks** | `createTaskService` | Task CRUD, reordering, attempts |
+| **Attempts** | `createAttemptService` | Attempt CRUD, logs, creation |
+| **Uploads** | `createUploadService` | File upload, decompression, tmp files |
+| **Checkpoints** | `createCheckpointService`, `createCheckpointOperationsService` | Create/restore checkpoints, fork, rewind |
+| **Files** | `createFileService`, `createFileOperationsService`, `createFileContentReadWriteService`, `createFileTreeAndContentService`, `createFileTreeBuilderService` | File read/write, operations, tree building |
+| **Search** | `createSearchService`, `createFileSearchService`, `createChatHistorySearchService` | Content search, file search, history search |
+| **Shells** | `createShellService` | Shell creation, management |
+| **Commands** | `createCommandService` | Slash command discovery, listing |
+| **Auth** | (integrated in middleware) | API key validation, verification |
+| **Agent Factory** | `createAgentFactoryService`, `createAgentFactoryProjectSyncService`, `createAgentFactoryFilesystemService` | Plugin registry, sync, filesystem ops |
+
+### 40+ Service Files (Business Logic Layer)
+
+**Location:** `packages/agentic-sdk/src/services/`
+
+All business logic lives here; Next.js routes are **thin proxies** that delegate to services:
+
+```
+services/
+├── project-crud-service.ts
+├── task-crud-and-reorder-service.ts
+├── attempt-crud-and-logs-service.ts
+├── attempt-file-upload-storage-service.ts
+├── checkpoint-crud-and-rewind-service.ts
+├── checkpoint-fork-and-rewind-operations-service.ts
+├── filesystem-read-write-service.ts
+├── file-operations-and-upload-service.ts
+├── file-content-read-write-service.ts
+├── file-tree-and-content-service.ts
+├── file-tree-builder-service.ts
+├── file-mime-and-language-constants.ts
+├── content-search-and-file-glob-service.ts
+├── file-search-and-content-search-service.ts
+├── chat-history-search-service.ts
+├── shell-process-db-tracking-service.ts
+├── slash-command-listing-service.ts
+├── force-create-project-and-task-service.ts
+├── agent-factory-plugin-registry-service.ts
+├── agent-factory-project-sync-and-install-service.ts
+└── agent-factory-plugin-filesystem-operations-service.ts
+```
+
+### Route Pattern: Thin Proxies
+
+**Next.js routes** (`src/app/api/*/route.ts`):
+- Parse HTTP request (body, params, query)
+- Call appropriate SDK service factory
+- Return JSON response
+
+**Example:**
+```typescript
+// src/app/api/tasks/[id]/route.ts (thin proxy)
+import { createTaskService } from '@agentic-sdk';
+
+export async function GET(req, { params }) {
+  const service = createTaskService(db);
+  const task = await service.getById(params.id);
+  return Response.json({ task });
 }
 ```
 
-#### Database Layer
-**Location:** `packages/agentic-sdk/db/`
+**Fastify routes** (`packages/agentic-sdk/src/routes/`):
+- Same service calls, different transport
+- Uses SSE (Server-Sent Events) instead of Socket.io
+- Standalone server on port 3100
 
-Shared database schema and initialization:
+### Database Layer (Shared)
+
+**Location:** `packages/agentic-sdk/src/db/`
+
 - `database-schema.ts` — Drizzle ORM schema (source of truth)
 - `database-connection.ts` — SQLite connection setup
 - `database-init-tables.ts` — Table initialization SQL
 
-**Main App Usage:**
+**Main App Import:**
 ```typescript
-// src/lib/db/schema.ts (shim)
-export { projects, tasks, attempts, ... } from '@agentic-sdk/db/database-schema';
+// src/lib/db/schema.ts (re-export)
+export { projects, tasks, attempts, ... } from '@agentic-sdk/db';
 ```
 
-### API Routes (Fastify)
+### Server Entry Points
 
-#### Structure
-```
-packages/agentic-sdk/routes/
-├── project-routes.ts
-├── task-crud-routes.ts
-├── attempt-routes.ts
-├── attempt-sse-routes.ts      (Server-Sent Events streaming)
-├── checkpoint-routes.ts
-├── file-routes.ts
-├── git-routes.ts
-├── terminal-routes.ts
-└── plugin-routes.ts
-```
+#### Fastify (Headless API)
+**File:** `packages/agentic-sdk/bin/server-entrypoint.ts`
+- Pure REST + SSE, no Socket.io
+- Registers CORS, multipart, auth plugins
+- Mounts all service routes
+- Port 3100 (configurable)
 
-#### Example Route
-```typescript
-// packages/agentic-sdk/routes/task-crud-routes.ts
-export async function registerTaskRoutes(fastify: FastifyInstance) {
-  const taskService = createTaskService(db);
-
-  fastify.get<{ Params: { id: string } }>('/api/tasks/:id', async (request, reply) => {
-    const { id } = request.params;
-    const task = await taskService.getById(id);
-    if (!task) return reply.code(404).send({ error: 'Not found' });
-    return reply.send({ task });
-  });
-
-  fastify.post<{ Body: NewTask }>('/api/tasks', async (request, reply) => {
-    const task = await taskService.create(request.body);
-    return reply.code(201).send({ task });
-  });
-}
-```
+#### Next.js (Web UI)
+**File:** `server.ts`
+- Boots Next.js with custom HTTP server
+- Initializes Socket.io for real-time updates
+- Routes to SDK services via Next.js API
+- Port 8556 (configurable)
 
 ### API Documentation
-See `/api/docs` (Swagger endpoint) when running Agentic SDK.
+See `/api/docs` (Swagger endpoint) when running Fastify backend.
 
 ---
 

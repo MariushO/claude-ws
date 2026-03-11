@@ -5,7 +5,7 @@ import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { getContentTypeForFormat } from '@/lib/content-types';
-import { createAttemptService } from '@agentic-sdk/services/attempt-crud-and-logs-service';
+import { createAttemptService } from '@agentic-sdk/services/attempts/crud-and-logs';
 import type { ClaudeOutput, OutputFormat } from '@/types';
 
 const attemptService = createAttemptService(db);

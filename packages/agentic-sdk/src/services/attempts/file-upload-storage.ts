@@ -4,8 +4,8 @@
 import { eq } from 'drizzle-orm';
 import fs from 'fs/promises';
 import path from 'path';
-import * as schema from '../db/database-schema.ts';
-import { generateId } from '../lib/nanoid-id-generator.ts';
+import * as schema from '../../db/database-schema.ts';
+import { generateId } from '../../lib/nanoid-id-generator.ts';
 
 export function createUploadService(db: any, uploadsDir: string) {
   return {

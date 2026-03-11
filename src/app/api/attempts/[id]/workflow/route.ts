@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { workflowTracker } from '@/lib/workflow-tracker';
-import { createAttemptWorkflowService } from '@agentic-sdk/services/attempt-workflow-tree-service';
+import { createAttemptWorkflowService } from '@agentic-sdk/services/attempts/workflow-tree';
 
 const workflowService = createAttemptWorkflowService(db);
 

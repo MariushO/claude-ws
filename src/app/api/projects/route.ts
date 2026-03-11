@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { mkdir, writeFile, access } from 'fs/promises';
 import { join } from 'path';
 import { createLogger } from '@/lib/logger';
-import { createProjectService } from '@agentic-sdk/services/project-crud-service';
+import { createProjectService } from '@agentic-sdk/services/project-crud';
 
 const log = createLogger('Projects');
 const projectService = createProjectService(db);

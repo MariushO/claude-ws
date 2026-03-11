@@ -6,13 +6,13 @@ import { verifyApiKey, unauthorizedResponse } from '@/lib/api-auth';
 import { getAgentFactoryDir, getGlobalClaudeDir } from '@/lib/agent-factory-dir';
 import { uploadSessions, cleanupDirectory } from '@/lib/upload-sessions';
 import { db } from '@/lib/db';
-import { createAgentFactoryService } from '@agentic-sdk/services/agent-factory-plugin-registry-service';
-import { extractArchive } from '@agentic-sdk/services/agent-factory-archive-extraction-service';
+import { createAgentFactoryService } from '@agentic-sdk/services/agent-factory/plugin-registry';
+import { extractArchive } from '@agentic-sdk/services/agent-factory/archive-extraction';
 import {
   analyzeForPreview,
   analyzeAndOrganize,
   importFromSession,
-} from '@agentic-sdk/services/agent-factory-upload-analysis-and-import-service';
+} from '@agentic-sdk/services/agent-factory/upload-analysis-and-import';
 
 const agentFactoryService = createAgentFactoryService(db);
 

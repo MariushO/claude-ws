@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyApiKey, unauthorizedResponse } from '@/lib/api-auth';
-import { createProjectService } from '@agentic-sdk/services/project-crud-service';
+import { createProjectService } from '@agentic-sdk/services/project-crud';
 
 const projectService = createProjectService(db);
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, copyFileSync } from 'fs';

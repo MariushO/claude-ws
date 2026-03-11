@@ -6,7 +6,7 @@ import { join } from 'path';
 import { UPLOADS_DIR } from '@/lib/file-utils';
 import type { TaskStatus } from '@/types';
 import { createLogger } from '@/lib/logger';
-import { createTaskService } from '@agentic-sdk/services/task-crud-and-reorder-service';
+import { createTaskService } from '@agentic-sdk/services/task-crud-and-reorder';
 
 const log = createLogger('TaskById');
 const taskService = createTaskService(db);

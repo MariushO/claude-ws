@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyApiKey, unauthorizedResponse } from '@/lib/api-auth';
-import { getGlobalClaudeDir } from '@agentic-sdk/services/agent-factory-dir-resolver-service';
-import { createAgentFactoryFilesystemService } from '@agentic-sdk/services/agent-factory-plugin-filesystem-operations-service';
+import { getGlobalClaudeDir } from '@agentic-sdk/services/agent-factory/dir-resolver';
+import { createAgentFactoryFilesystemService } from '@agentic-sdk/services/agent-factory/plugin-filesystem-operations';
 
 const fsService = createAgentFactoryFilesystemService();
 

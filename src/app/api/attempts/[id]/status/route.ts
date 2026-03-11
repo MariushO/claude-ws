@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { createAttemptService } from '@agentic-sdk/services/attempt-crud-and-logs-service';
+import { createAttemptService } from '@agentic-sdk/services/attempts/crud-and-logs';
 
 const attemptService = createAttemptService(db);
 

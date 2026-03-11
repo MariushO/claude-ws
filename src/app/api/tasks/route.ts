@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import type { TaskStatus } from '@/types';
-import { createTaskService } from '@agentic-sdk/services/task-crud-and-reorder-service';
+import { createTaskService } from '@agentic-sdk/services/task-crud-and-reorder';
 
 const taskService = createTaskService(db);
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { createShellService } from '@agentic-sdk/services/shell-process-db-tracking-service';
+import { createShellService } from '@agentic-sdk/services/shell-process-db-tracking';
 
 const shellService = createShellService(db);
 

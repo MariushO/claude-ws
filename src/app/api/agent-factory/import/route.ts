@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyApiKey, unauthorizedResponse } from '@/lib/api-auth';
-import { createAgentFactoryService } from '@agentic-sdk/services/agent-factory-plugin-registry-service';
-import { createAgentFactoryImportService, ImportError } from '@agentic-sdk/services/agent-factory-component-import-service';
+import { createAgentFactoryService } from '@agentic-sdk/services/agent-factory/plugin-registry';
+import { createAgentFactoryImportService, ImportError } from '@agentic-sdk/services/agent-factory/component-import';
 
 const agentFactoryService = createAgentFactoryService(db);
 const importService = createAgentFactoryImportService(db, agentFactoryService);

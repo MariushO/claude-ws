@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createFileTreeAndContentService } from '@agentic-sdk/services/file-tree-and-content-service';
+import { createFileTreeAndContentService } from '@agentic-sdk/services/files/tree-and-content';
 
 const fileContentService = createFileTreeAndContentService();
 

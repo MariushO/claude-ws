@@ -5,4 +5,4 @@ export {
   pluginExists,
   type GeneratePluginFileOptions,
   type PluginFileExistsError,
-} from '@agentic-sdk/services/agent-factory-plugin-file-generator-service';
+} from '@agentic-sdk/services/agent-factory/plugin-file-generator';

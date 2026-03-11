@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyApiKey, unauthorizedResponse } from '@/lib/api-auth';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
-import { dependencyExtractor } from '@agentic-sdk/services/agent-factory-dependency-extractor-service';
-import { claudeDependencyAnalyzer } from '@agentic-sdk/services/agent-factory-claude-dependency-analyzer-service';
-import { installScriptGenerator } from '@agentic-sdk/services/agent-factory-install-script-generator-service';
+import { dependencyExtractor } from '@agentic-sdk/services/agent-factory/dependency-extractor';
+import { claudeDependencyAnalyzer } from '@agentic-sdk/services/agent-factory/claude-dependency-analyzer';
+import { installScriptGenerator } from '@agentic-sdk/services/agent-factory/install-script-generator';
 
 interface DependencyTreeNode { type: string; name: string; depth: number; }
 

@@ -2,8 +2,8 @@
  * Checkpoint CRUD service - list, create, rewind, and bulk-backfill conversation state snapshots
  */
 import { eq, desc } from 'drizzle-orm';
-import * as schema from '../db/database-schema.ts';
-import { generateId } from '../lib/nanoid-id-generator.ts';
+import * as schema from '../../db/database-schema.ts';
+import { generateId } from '../../lib/nanoid-id-generator.ts';
 
 export function createCheckpointService(db: any) {
   return {

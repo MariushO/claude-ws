@@ -158,7 +158,7 @@ claude-ws/
 
 ## packages/agentic-sdk Structure
 
-**Headless Fastify backend** — REST + SSE interface without Socket.io or UI.
+**Shared service library + standalone Fastify backend** — REST + SSE API without Socket.io or UI.
 
 ### Agentic SDK src/
 
@@ -168,7 +168,7 @@ packages/agentic-sdk/src/
 │   ├── claude-sdk-agent-provider.ts
 │   ├── agent-lifecycle-manager.ts
 │   └── claude-sdk-message-to-output-adapter.ts
-├── routes/                         # REST endpoint definitions
+├── routes/                         # REST endpoint definitions (thin proxies)
 │   ├── attempt-routes.ts
 │   ├── attempt-sse-routes.ts
 │   ├── file-routes.ts
@@ -177,14 +177,31 @@ packages/agentic-sdk/src/
 │   ├── task-routes.ts
 │   ├── shell-routes.ts
 │   ├── checkpoint-routes.ts
-│   └── ~11 more route modules
-├── services/                       # Business logic
+│   ├── upload-routes.ts
+│   ├── command-routes.ts
+│   └── agent-factory-routes.ts
+├── services/                       # 40+ Business logic services
+│   ├── project-crud-service.ts
+│   ├── task-crud-and-reorder-service.ts
 │   ├── attempt-crud-and-logs-service.ts
+│   ├── attempt-file-upload-storage-service.ts
 │   ├── checkpoint-crud-and-rewind-service.ts
+│   ├── checkpoint-fork-and-rewind-operations-service.ts
 │   ├── filesystem-read-write-service.ts
+│   ├── file-operations-and-upload-service.ts
+│   ├── file-content-read-write-service.ts
 │   ├── file-tree-and-content-service.ts
+│   ├── file-tree-builder-service.ts
+│   ├── file-mime-and-language-constants.ts
 │   ├── content-search-and-file-glob-service.ts
-│   └── agent-factory-plugin-registry-service.ts
+│   ├── file-search-and-content-search-service.ts
+│   ├── chat-history-search-service.ts
+│   ├── shell-process-db-tracking-service.ts
+│   ├── slash-command-listing-service.ts
+│   ├── force-create-project-and-task-service.ts
+│   ├── agent-factory-plugin-registry-service.ts
+│   ├── agent-factory-project-sync-and-install-service.ts
+│   └── agent-factory-plugin-filesystem-operations-service.ts
 ├── db/                             # Database (shared from main)
 │   ├── database-schema.ts
 │   ├── database-connection.ts
@@ -198,16 +215,19 @@ packages/agentic-sdk/src/
 ├── plugins/                        # Fastify plugins
 │   ├── fastify-auth-plugin.ts
 │   └── fastify-error-handler-plugin.ts
+├── index.ts                        # Public barrel export (canonical import path)
 ├── fastify-app-setup.ts            # Fastify server factory
 └── app-factory.ts                  # App bootstrap
 ```
 
 **Key characteristics:**
-- Uses Claude SDK Agent directly (not CLI)
-- Server-Sent Events (SSE) for attempt streaming (not Socket.io)
-- Standalone Fastify server on port 3100
-- Shared database schema with main app
-- Same API routes, different transport
+- **Canonical imports:** All business logic accessed via `@agentic-sdk` barrel export
+- **Factory pattern:** `createXService(db?)` returns method objects
+- **Shared across:** Both Next.js routes and Fastify backend delegate to same services
+- **All 11 API domains:** Projects, Tasks, Attempts, Uploads, Checkpoints, Files, Search, Shells, Commands, Auth, Agent Factory
+- **Server-Sent Events:** SSE streaming for headless API (not Socket.io)
+- **Standalone Fastify:** Port 3100, pure REST + SSE, no UI
+- **Shared database:** Same schema and tables as main Next.js app
 
 ## Locales Directory
 

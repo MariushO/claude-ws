@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { createTaskService } from '@agentic-sdk/services/task-crud-and-reorder-service';
-import { createAttemptService } from '@agentic-sdk/services/attempt-crud-and-logs-service';
+import { createTaskService } from '@agentic-sdk/services/task-crud-and-reorder';
+import { createAttemptService } from '@agentic-sdk/services/attempts/crud-and-logs';
 import type { ClaudeOutput, AttemptFile } from '@/types';
 
 const taskService = createTaskService(db);

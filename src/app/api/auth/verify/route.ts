@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAuthVerificationService } from '@agentic-sdk/services/auth-verification-service';
+import { createAuthVerificationService } from '@agentic-sdk/services/auth-verification';
 
 const authService = createAuthVerificationService(process.env.API_ACCESS_KEY);
 

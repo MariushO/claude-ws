@@ -4,8 +4,8 @@
  * and rewinding (deleting) attempts/checkpoints after a given checkpoint.
  */
 import { eq, desc, and, lt, gte, asc } from 'drizzle-orm';
-import * as schema from '../db/database-schema.ts';
-import { generateId } from '../lib/nanoid-id-generator.ts';
+import * as schema from '../../db/database-schema.ts';
+import { generateId } from '../../lib/nanoid-id-generator.ts';
 
 export function createCheckpointOperationsService(db: any) {
   return {

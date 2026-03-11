@@ -4,12 +4,12 @@ import * as schema from '@/lib/db/schema';
 import { verifyApiKey, unauthorizedResponse } from '@/lib/api-auth';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { dependencyExtractor } from '@agentic-sdk/services/agent-factory-dependency-extractor-service';
-import { createDependencyCacheService } from '@agentic-sdk/services/agent-factory-dependency-cache-service';
-import { installScriptGenerator } from '@agentic-sdk/services/agent-factory-install-script-generator-service';
-import { claudeDependencyAnalyzer } from '@agentic-sdk/services/agent-factory-claude-dependency-analyzer-service';
+import { dependencyExtractor } from '@agentic-sdk/services/agent-factory/dependency-extractor';
+import { createDependencyCacheService } from '@agentic-sdk/services/agent-factory/dependency-cache';
+import { installScriptGenerator } from '@agentic-sdk/services/agent-factory/install-script-generator';
+import { claudeDependencyAnalyzer } from '@agentic-sdk/services/agent-factory/claude-dependency-analyzer';
 import { readdirSync } from 'fs';
-import { createAgentFactoryService } from '@agentic-sdk/services/agent-factory-plugin-registry-service';
+import { createAgentFactoryService } from '@agentic-sdk/services/agent-factory/plugin-registry';
 import { createLogger } from '@/lib/logger';
 
 interface DependencyTreeNode { type: string; name: string; depth: number; }

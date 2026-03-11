@@ -3,7 +3,7 @@
  * for completed attempts. Live/running attempts use workflowTracker (in-memory, stays in route).
  */
 import { eq } from 'drizzle-orm';
-import * as schema from '../db/database-schema.ts';
+import * as schema from '../../db/database-schema.ts';
 
 export function createAttemptWorkflowService(db: any) {
   return {

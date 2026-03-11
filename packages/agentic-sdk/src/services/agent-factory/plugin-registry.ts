@@ -6,8 +6,8 @@ import { eq, and, inArray, desc } from 'drizzle-orm';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
-import * as schema from '../db/database-schema.ts';
-import { generateId } from '../lib/nanoid-id-generator.ts';
+import * as schema from '../../db/database-schema.ts';
+import { generateId } from '../../lib/nanoid-id-generator.ts';
 
 export function createAgentFactoryService(db: any) {
   return {

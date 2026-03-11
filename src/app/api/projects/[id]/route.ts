@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { createLogger } from '@/lib/logger';
-import { createProjectService } from '@agentic-sdk/services/project-crud-service';
+import { createProjectService } from '@agentic-sdk/services/project-crud';
 
 const log = createLogger('ProjectById');
 const projectService = createProjectService(db);
