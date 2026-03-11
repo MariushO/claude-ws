@@ -28,6 +28,9 @@
       ],
       "@/locales/*": [
         "./locales/*"
+      ],
+      "@agentic-sdk/*": [
+        "./packages/agentic-sdk/src/*"
       ]
     }
   },
