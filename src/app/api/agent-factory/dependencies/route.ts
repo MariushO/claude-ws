@@ -2,25 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyApiKey, unauthorizedResponse } from '@/lib/api-auth';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
-import { dependencyExtractor } from '@/lib/dependency-extractor';
-import { claudeDependencyAnalyzer } from '@/lib/claude-dependency-analyzer';
-import { installScriptGenerator } from '@/lib/install-script-generator';
-import type { DependencyTreeNode } from '@/components/agent-factory/dependency-tree';
-import { countPlugins } from '@/components/agent-factory/dependency-tree';
+import { dependencyExtractor } from '@agentic-sdk/services/agent-factory-dependency-extractor-service';
+import { claudeDependencyAnalyzer } from '@agentic-sdk/services/agent-factory-claude-dependency-analyzer-service';
+import { installScriptGenerator } from '@agentic-sdk/services/agent-factory-install-script-generator-service';
 
-interface DependenciesRequest {
-  sourcePath: string;
-  type: 'skill' | 'command' | 'agent';
-  useClaude?: boolean;
-}
+interface DependencyTreeNode { type: string; name: string; depth: number; }
 
+// POST /api/agent-factory/dependencies - Analyze dependencies for a discovered component source path
 export async function POST(request: NextRequest) {
   try {
-    if (!verifyApiKey(request)) {
-      return unauthorizedResponse();
-    }
+    if (!verifyApiKey(request)) return unauthorizedResponse();
 
-    const body = await request.json() as DependenciesRequest;
+    const body = await request.json();
     const { sourcePath, type, useClaude } = body;
 
     if (!sourcePath || !type) {
@@ -31,33 +24,21 @@ export async function POST(request: NextRequest) {
     if (!resolvedPath.startsWith(homedir())) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
-
     if (!existsSync(sourcePath)) {
       return NextResponse.json({ error: 'Source path not found' }, { status: 404 });
     }
 
-    // Extract dependencies using Claude SDK or regex extractor
     let extracted;
     if (useClaude) {
-      // Use Claude SDK for intelligent analysis
       const analyzed = await claudeDependencyAnalyzer.analyze(sourcePath, type);
-      extracted = {
-        libraries: analyzed.libraries,
-        plugins: analyzed.plugins,
-      };
+      extracted = { libraries: analyzed.libraries, plugins: analyzed.plugins };
     } else {
-      // Use regex-based extraction
       extracted = await dependencyExtractor.extract(sourcePath, type);
     }
 
-    // Generate install scripts
     const installScripts = installScriptGenerator.generateAll(extracted.libraries);
-
-    // For non-recursive resolution (discovered plugins), create flat tree
-    const dependencyTree: DependencyTreeNode[] = (extracted.plugins || []).map(comp => ({
-      type: comp.type,
-      name: comp.name,
-      depth: 1,
+    const dependencyTree: DependencyTreeNode[] = (extracted.plugins || []).map(c => ({
+      type: c.type, name: c.name, depth: 1,
     }));
 
     return NextResponse.json({
