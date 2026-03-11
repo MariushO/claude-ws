@@ -2,14 +2,21 @@
 
 > **DISCLAIMER:** This software is provided "AS IS" without warranty. [Read full disclaimer](./DISCLAIMER.md).
 
-**Visual workspace for Claude Code** — Kanban board, code editor, Git integration, local-first SQLite.
+**AI-powered workspace for solo CEOs and indie builders** — manage your entire business with AI agents, not just code. Kanban board, code editor, Git integration, claw agent hub, local-first SQLite.
 
 ![Desktop](./public/desktop-review-0.jpeg)
 
 ---
 
+## Vision
+
+Claude Workspace is evolving from a developer tool into a **full AI-powered business hub**. By integrating [OpenClaw](https://openclaw.ai/) and compatible claw agents, solo founders can manage email, calendar, messaging, sales, support, and operations — all from one workspace alongside their code. See the [Project Roadmap](./docs/project-roadmap.md) for details.
+
+---
+
 ## Features
 
+### Development
 - **Kanban Board** — Drag-and-drop task management with full conversation history
 - **Real-time Streaming** — Live Claude responses via Socket.io
 - **Checkpoints** — Save and rewind to any conversation state
@@ -18,6 +25,12 @@
 - **Agent Factory** — Plugin system for custom skills, commands, agents
 - **Agentic SDK** — Headless REST + SSE backend for programmatic access ([docs](./packages/agentic-sdk/README.md))
 - **Themes** — Light, Dark, VS Code variants, Dracula
+
+### Business Hub (Coming Q2 2026)
+- **Claw Agent Hub** — Adopt and manage [OpenClaw](https://openclaw.ai/) agents for business tasks
+- **Multi-Channel Inbox** — Unified messaging across WhatsApp, Slack, Discord, Teams, email
+- **Business Agent Templates** — Pre-built agents for email, calendar, social media, customer support
+- **Workflow Automation** — Visual pipelines connecting agents to automate business operations
 
 ---
 
@@ -132,6 +145,16 @@ For secure remote access, see [Cloudflare Tunnel Setup](./docs/cloudflare-tunnel
 ## Tech Stack
 
 Next.js 16, React 19, Fastify 5, SQLite + Drizzle ORM, Socket.io, Claude Agent SDK, Tailwind CSS 4, Radix UI, Zustand, Pino
+
+---
+
+## Documentation
+
+- [Project Overview & PDR](./docs/project-overview-pdr.md) — Features, tech stack, requirements
+- [Project Roadmap](./docs/project-roadmap.md) — Feature timeline, claw agent integration plans
+- [System Architecture](./docs/system-architecture.md) — Component design, API structure
+- [Code Standards](./docs/code-standards.md) — Development conventions and patterns
+- [Cloudflare Tunnel Setup](./docs/cloudflare-tunnel.md) — Remote access configuration
 
 ---
 

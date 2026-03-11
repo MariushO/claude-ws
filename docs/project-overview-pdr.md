@@ -2,13 +2,16 @@
 
 ## What is Claude Workspace?
 
-**Claude Workspace (claude-ws)** is a visual, local-first web application that serves as a unified development workspace for Claude Code users. It provides a Kanban board for task management, an integrated code editor, Git integration, terminal access, and real-time AI chat with Claude—all in a single, cohesive interface powered by a local SQLite database.
+**Claude Workspace (claude-ws)** is a visual, local-first web application evolving from a unified development workspace into an **AI-powered business hub for solo CEOs and indie operators**. It provides a Kanban board for task management, an integrated code editor, Git integration, terminal access, real-time AI chat with Claude, and an expanding ecosystem of claw agents ([OpenClaw](https://openclaw.ai/)) for business automation—all in a single, cohesive interface powered by a local SQLite database.
 
 ## Product Vision
 
-Enable developers to manage complex AI-assisted projects through a visual, keyboard-friendly workspace that mirrors the collaborative development experience of Claude Code, with persistent history, offline capability, and extensibility through a plugin system.
+Enable solo founders and indie operators to **run their entire business from a single AI workspace** — not just code, but email, sales, marketing, customer support, calendar, and operations — all managed by AI agents. The workspace combines development tools with [claw agents](https://openclaw.ai/) that handle business tasks autonomously, turning one person into a full team.
 
-**Target Users:** Developers and teams actively using Claude Code for AI-powered development, who need persistent task tracking, code editing, and conversation history management across local and remote workspaces.
+**Target Users:**
+- **Solo CEOs & Indie Hackers** — One-person businesses needing AI agents for all business functions
+- **Developers** — Claude Code users needing persistent task tracking, code editing, and conversation management
+- **Small Teams** — Growing teams adopting AI-first workflows across development and operations
 
 ---
 
@@ -28,6 +31,9 @@ Enable developers to manage complex AI-assisted projects through a visual, keybo
 | **Access Anywhere** | Remote access via Cloudflare Tunnels or ctunnel. API key authentication for secure headless access. | Released |
 | **Internationalization (i18n)** | 8 language support: English, German, Spanish, French, Japanese, Korean, Vietnamese, Simplified Chinese. | Released |
 | **Themes** | Light mode, Dark mode, VS Code Variants, Dracula theme. System preference detection. | Released |
+| **Claw Agent Hub** | Adopt and manage OpenClaw agents for business tasks (email, calendar, social media, support). | Planned Q2 2026 |
+| **Multi-Channel Inbox** | Unified messaging across WhatsApp, Slack, Discord, Teams, email via agent routing. | Planned Q2 2026 |
+| **Workflow Automation** | Visual pipeline builder connecting agents for automated business operations. | Planned Q3 2026 |
 
 ---
 
@@ -262,13 +268,16 @@ Hooks (`use-*.ts` files) encapsulate stateful logic:
 - **Node.js 20+:** Requires modern Node.js for native modules (better-sqlite3, node-pty)
 - **File size:** Large file editing (>10MB) may cause UI lag
 - **Terminal:** Limited to Bash/Shell; custom shell support via environment variables
+- **No claw agent support yet:** OpenClaw Gateway integration planned for Q2 2026
+- **No multi-channel messaging:** Unified inbox planned for Q2 2026
 
 ---
 
 ## Related Documentation
 
+- [README](../README.md) — Quick start, configuration, project structure
 - [System Architecture](./system-architecture.md) — Component interaction, database schema, API design
 - [Code Standards](./code-standards.md) — File naming, TypeScript conventions, component patterns
-- [Project Roadmap](./project-roadmap.md) — Feature timeline, version history, upcoming work
+- [Project Roadmap](./project-roadmap.md) — Feature timeline, claw agent integration plans, version history
 - [Cloudflare Tunnel Setup](./cloudflare-tunnel.md) — Remote access configuration
 
