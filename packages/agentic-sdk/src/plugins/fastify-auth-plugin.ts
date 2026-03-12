@@ -22,8 +22,9 @@ const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (app, opts) => {
   }
 
   app.addHook('onRequest', async (request, reply) => {
-    // Skip health check routes
-    if (request.url === '/health' || request.url.startsWith('/health?')) {
+    // Skip health check and auth verify routes (auth verify is used to check/validate auth before user is authenticated)
+    if (request.url === '/health' || request.url.startsWith('/health?') ||
+        request.url === '/api/auth/verify' || request.url.startsWith('/api/auth/verify?')) {
       return;
     }
 

@@ -9,33 +9,32 @@ import { createDbConnection } from './db/database-connection';
 import { initDbTables } from './db/database-init-tables';
 import { AgentProvider } from './agent/claude-sdk-agent-provider';
 import { AgentManager } from './agent/agent-lifecycle-manager';
-import { createProjectService } from './services/project-crud';
-import { createTaskService } from './services/task-crud-and-reorder';
-import { createAttemptService } from './services/attempts/crud-and-logs';
-import { createCheckpointService } from './services/checkpoints/crud-and-rewind';
-import { createFileService } from './services/files/read-write';
-import { createSearchService } from './services/content-search-and-file-glob';
-import { createUploadService } from './services/attempts/file-upload-storage';
-import { createShellService } from './services/shell-process-db-tracking';
-import { createCommandService } from './services/slash-command-listing';
-import { createAgentFactoryService } from './services/agent-factory/plugin-registry';
+import { createProjectService } from './services/project/project-crud';
+import { createTaskService } from './services/task/task-crud-and-reorder';
+import { createAttemptService } from './services/attempt/attempt-crud-and-logs';
+import { createCheckpointService } from './services/checkpoint/checkpoint-crud-and-rewind';
+import { createFileService } from './services/file/filesystem-read-write';
+import { createSearchService } from './services/search/content-search-and-file-glob';
+import { createUploadService } from './services/attempt/attempt-file-upload-storage';
+import { createShellService } from './services/shell/shell-process-db-tracking';
+import { createCommandService } from './services/command/slash-command-listing';
+import { createAgentFactoryService, type AgentFactoryService } from './services/agent-factory/agent-factory-plugin-registry';
 import type { EnvConfig } from './config/env-config';
 
-// Route imports
-import authRoutes from './routes/auth-routes';
-import projectRoutes from './routes/project-routes';
-import taskRoutes from './routes/task-routes';
-import attemptRoutes from './routes/attempt-routes';
+// Route imports — folder-based domain routes
+import attemptsDomainRoutes from './routes/attempts/index';
 import attemptSseRoutes from './routes/attempt-sse-routes';
-import checkpointRoutes from './routes/checkpoint-routes';
-import fileRoutes from './routes/file-routes';
-import searchRoutes from './routes/search-routes';
+import tasksDomainRoutes from './routes/tasks/index';
+import checkpointsDomainRoutes from './routes/checkpoints/index';
+import filesDomainRoutes from './routes/files/index';
+import searchDomainRoutes from './routes/search/index';
 import filesystemRoutes from './routes/filesystem-routes';
-import uploadRoutes from './routes/upload-routes';
-import shellRoutes from './routes/shell-routes';
-import commandRoutes from './routes/command-routes';
-import agentFactoryPluginRoutes from './routes/agent-factory-plugin-routes';
-import agentFactoryProjectRoutes from './routes/agent-factory-project-routes';
+import projectsDomainRoutes from './routes/projects/index';
+import authDomainRoutes from './routes/auth/index';
+import shellsDomainRoutes from './routes/shells/index';
+import commandsDomainRoutes from './routes/commands/index';
+import uploadsDomainRoutes from './routes/uploads/index';
+import agentFactoryDomainRoutes from './routes/agent-factory/index';
 
 export async function createApp(envConfig: EnvConfig) {
   const app = await buildFastifyApp(envConfig);
@@ -119,21 +118,20 @@ export async function createApp(envConfig: EnvConfig) {
   // Health check (no auth)
   app.get('/health', async () => ({ status: 'ok', timestamp: Date.now() }));
 
-  // Register routes
-  await app.register(authRoutes);
-  await app.register(projectRoutes);
-  await app.register(taskRoutes);
-  await app.register(attemptRoutes);
+  // Register folder-based domain routes
+  await app.register(authDomainRoutes);
+  await app.register(projectsDomainRoutes);
+  await app.register(tasksDomainRoutes);
+  await app.register(attemptsDomainRoutes);
   await app.register(attemptSseRoutes);
-  await app.register(checkpointRoutes);
-  await app.register(fileRoutes);
-  await app.register(searchRoutes);
+  await app.register(checkpointsDomainRoutes);
+  await app.register(filesDomainRoutes);
+  await app.register(searchDomainRoutes);
   await app.register(filesystemRoutes);
-  await app.register(uploadRoutes);
-  await app.register(shellRoutes);
-  await app.register(commandRoutes);
-  await app.register(agentFactoryPluginRoutes);
-  await app.register(agentFactoryProjectRoutes);
+  await app.register(uploadsDomainRoutes);
+  await app.register(shellsDomainRoutes);
+  await app.register(commandsDomainRoutes);
+  await app.register(agentFactoryDomainRoutes);
 
   return app;
 }
@@ -154,7 +152,7 @@ declare module 'fastify' {
       upload: ReturnType<typeof createUploadService>;
       shell: ReturnType<typeof createShellService>;
       command: ReturnType<typeof createCommandService>;
-      agentFactory: ReturnType<typeof createAgentFactoryService>;
+      agentFactory: AgentFactoryService;
     };
     agentManager: AgentManager;
   }

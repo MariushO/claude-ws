@@ -19,7 +19,8 @@ export function createDbConnection(dataDir: string) {
     fs.mkdirSync(tmpDir, { recursive: true });
   }
 
-  const dbPath = path.join(dataDir, 'agentic-sdk.db');
+  // Use same database as legacy claude-ws for shared state
+  const dbPath = path.join(dataDir, 'claude-ws.db');
   const sqlite = new Database(dbPath);
 
   // WAL mode for better concurrent read performance
