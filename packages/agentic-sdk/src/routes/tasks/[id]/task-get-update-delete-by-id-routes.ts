@@ -1,8 +1,6 @@
 /**
  * Task by ID routes - GET, PUT, PATCH, DELETE /api/tasks/:id
  */
-import { rm } from 'fs/promises';
-import { join } from 'path';
 import { FastifyInstance } from 'fastify';
 
 const VALID_STATUSES = ['todo', 'in_progress', 'in_review', 'done', 'cancelled'];
@@ -81,11 +79,10 @@ export default async function taskGetUpdateDeleteByIdRoutes(fastify: FastifyInst
 
       // Query all attempts for this task to clean up upload files
       const attempts = await fastify.services.task.getAttempts(id);
-      const uploadsDir = join(fastify.envConfig.dataDir, 'uploads');
 
-      // Delete physical upload files for each attempt
+      // Delete physical upload files for each attempt via service
       for (const attempt of attempts) {
-        await rm(join(uploadsDir, attempt.id), { recursive: true, force: true });
+        await fastify.services.upload.cleanupAttemptFiles(attempt.id);
       }
 
       await fastify.services.task.remove(id);

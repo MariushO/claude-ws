@@ -1,9 +1,10 @@
 /**
  * Slash command listing service - returns hardcoded built-in Claude commands plus scans
- * ~/.claude/commands/ and project .claude/commands/ directories for user-defined commands
+ * ~/.claude/commands/ and project .claude/commands/ directories for user-defined commands.
+ * Also provides getContent() and processPrompt() for reading and processing command files.
  */
 import { readdirSync, readFileSync, statSync, existsSync } from 'fs';
-import { join } from 'path';
+import { join, basename, resolve } from 'path';
 import { homedir } from 'os';
 
 export interface CommandInfo {
@@ -13,6 +14,20 @@ export interface CommandInfo {
   isBuiltIn?: boolean;
   isInteractive?: boolean;
 }
+
+export interface CommandContent {
+  name: string;
+  body: string;
+  description?: string;
+  argumentHint?: string;
+}
+
+export interface CommandPromptResult {
+  name: string;
+  prompt: string;
+}
+
+export type CommandFileError = { code: 'NOT_FOUND' } | { code: 'FORBIDDEN' };
 
 const BUILTIN_COMMANDS: CommandInfo[] = [
   { name: 'bug', description: 'Report bugs (sends conversation to Anthropic)', isBuiltIn: true },
@@ -93,6 +108,38 @@ function scanSkillsDir(dir: string): CommandInfo[] {
   return skills;
 }
 
+/** Parse frontmatter + body from a command file (supports description/argument-hint fields) */
+function parseCommandFile(content: string): { body: string; description?: string; argumentHint?: string } {
+  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)/);
+  if (!frontmatterMatch) return { body: content };
+  const fm = frontmatterMatch[1];
+  const body = frontmatterMatch[2].trim();
+  const descMatch = fm.match(/description:\s*(.+)/);
+  const argMatch = fm.match(/argument-hint:\s*(.+)/);
+  return {
+    body,
+    description: descMatch ? descMatch[1].trim() : undefined,
+    argumentHint: argMatch ? argMatch[1].trim() : undefined,
+  };
+}
+
+/** Resolve and validate a command file path (returns null if forbidden or not found) */
+function resolveCommandFile(
+  name: string,
+  subcommand?: string,
+): { filePath: string; fullName: string } | { error: CommandFileError } {
+  const safeName = basename(name);
+  const commandsDir = join(homedir(), '.claude', 'commands');
+  const filePath = subcommand
+    ? join(commandsDir, safeName, `${basename(subcommand)}.md`)
+    : join(commandsDir, `${safeName}.md`);
+  const resolvedPath = resolve(filePath);
+  if (!resolvedPath.startsWith(resolve(commandsDir))) return { error: { code: 'FORBIDDEN' } };
+  if (!existsSync(filePath)) return { error: { code: 'NOT_FOUND' } };
+  const fullName = subcommand ? `${name}:${subcommand}` : name;
+  return { filePath, fullName };
+}
+
 export function createCommandService() {
   return {
     list(projectPath?: string): CommandInfo[] {
@@ -131,6 +178,27 @@ export function createCommandService() {
 
     getById(name: string, projectPath?: string): CommandInfo | undefined {
       return this.list(projectPath).find((c) => c.name === name);
+    },
+
+    /** Read and parse a command file — returns content or a typed error */
+    getContent(name: string, subcommand?: string): CommandContent | CommandFileError {
+      const resolved = resolveCommandFile(name, subcommand);
+      if ('error' in resolved) return resolved.error;
+      const raw = readFileSync(resolved.filePath, 'utf-8');
+      const parsed = parseCommandFile(raw);
+      return { name: resolved.fullName, ...parsed };
+    },
+
+    /** Read a command file, substitute $ARGUMENTS, and return the processed prompt */
+    processPrompt(name: string, args?: string, subcommand?: string): CommandPromptResult | CommandFileError {
+      const resolved = resolveCommandFile(name, subcommand);
+      if ('error' in resolved) return resolved.error;
+      const raw = readFileSync(resolved.filePath, 'utf-8');
+      const { body } = parseCommandFile(raw);
+      const prompt = args
+        ? body.replace(/\$ARGUMENTS/g, args)
+        : body.replace(/\$ARGUMENTS/g, '');
+      return { name: resolved.fullName, prompt: prompt.trim() };
     },
   };
 }

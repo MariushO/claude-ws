@@ -1,25 +1,22 @@
 /**
  * GET /api/search/files — fuzzy file search by name with scoring
+ * Thin transport adapter — delegates to createFileSearchService
  */
 import { FastifyInstance } from 'fastify';
-import fs from 'fs';
-import path from 'path';
+import { createFileSearchService } from '../../../services/files/search-and-content-search';
 
-const EXCLUDED_DIRS = ['node_modules', '.git', '.next', 'dist', 'build', '.turbo', '__pycache__', '.cache'];
-const EXCLUDED_FILES = ['.DS_Store', 'Thumbs.db'];
+const svc = createFileSearchService();
 
-interface FuzzyMatch {
-  score: number;
-  matches: number[];
-}
-
-function fuzzyMatch(query: string, target: string): FuzzyMatch | null {
+/**
+ * Inline fuzzy match with scoring — kept here because it is UI-specific scoring
+ * logic tied to the search/files endpoint response shape (score + matches array).
+ */
+function fuzzyMatchWithScore(query: string, target: string): { score: number; matches: number[] } | null {
   if (!query) return { score: 0, matches: [] };
 
   const queryLower = query.toLowerCase();
   const targetLower = target.toLowerCase();
 
-  // Quick check: all query chars must exist in target
   let checkIndex = 0;
   for (const char of queryLower) {
     const found = targetLower.indexOf(char, checkIndex);
@@ -49,11 +46,8 @@ function fuzzyMatch(query: string, target: string): FuzzyMatch | null {
         matchScore += 10;
       } else {
         const prevChar = target[i - 1];
-        if (prevChar === '/' || prevChar === '\\' || prevChar === '.' || prevChar === '-' || prevChar === '_' || prevChar === ' ') {
-          matchScore += 5;
-        } else if (target[i] === target[i].toUpperCase() && prevChar === prevChar.toLowerCase()) {
-          matchScore += 3;
-        }
+        if (['/','\\','.', '-', '_', ' '].includes(prevChar)) matchScore += 5;
+        else if (target[i] === target[i].toUpperCase() && prevChar === prevChar.toLowerCase()) matchScore += 3;
       }
 
       if (query[queryIndex] === target[i]) matchScore += 1;
@@ -71,71 +65,20 @@ function fuzzyMatch(query: string, target: string): FuzzyMatch | null {
   return { score, matches };
 }
 
-function collectFiles(
-  dirPath: string, basePath: string,
-  results: { name: string; path: string; type: 'file' | 'directory' }[]
-): void {
-  try {
-    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.name.startsWith('.')) continue;
-      if (entry.isDirectory() && EXCLUDED_DIRS.includes(entry.name)) continue;
-      if (entry.isFile() && EXCLUDED_FILES.includes(entry.name)) continue;
-
-      const fullPath = path.join(dirPath, entry.name);
-      const relativePath = path.relative(basePath, fullPath);
-
-      results.push({
-        name: entry.name,
-        path: relativePath,
-        type: entry.isDirectory() ? 'directory' : 'file',
-      });
-
-      if (entry.isDirectory()) {
-        collectFiles(fullPath, basePath, results);
-      }
-    }
-  } catch { /* skip unreadable dirs */ }
-}
-
 export default async function searchFilesByPatternRoute(fastify: FastifyInstance) {
   fastify.get('/api/search/files', async (request, reply) => {
+    const { q, basePath, limit: limitStr } = request.query as any;
+    const limit = parseInt(limitStr || '50', 10);
+
+    if (!basePath) return reply.code(400).send({ error: 'basePath parameter is required' });
+
     try {
-      const { q, basePath, limit: limitStr } = request.query as any;
-      const limit = parseInt(limitStr || '50', 10);
-
-      if (!basePath) return reply.code(400).send({ error: 'basePath parameter is required' });
-
-      const resolvedPath = path.resolve(basePath);
-      if (!fs.existsSync(resolvedPath)) return reply.code(404).send({ error: 'Path does not exist' });
-
-      const allFiles: { name: string; path: string; type: 'file' | 'directory' }[] = [];
-      collectFiles(resolvedPath, resolvedPath, allFiles);
-
-      if (!q?.trim()) {
-        return {
-          results: allFiles.slice(0, limit).map(f => ({ ...f, score: 0, matches: [] })),
-          total: allFiles.length,
-        };
-      }
-
-      const results: any[] = [];
-      for (const file of allFiles) {
-        const nameMatch = fuzzyMatch(q, file.name);
-        const pathMatch = fuzzyMatch(q, file.path);
-        const match = (nameMatch && pathMatch)
-          ? (nameMatch.score >= pathMatch.score ? nameMatch : pathMatch)
-          : (nameMatch || pathMatch);
-
-        if (match) {
-          results.push({ ...file, score: match.score, matches: match.matches });
-        }
-      }
-
-      results.sort((a: any, b: any) => b.score - a.score);
-
-      return { results: results.slice(0, limit), total: results.length };
+      const { results, total } = svc.fuzzySearchFiles(basePath, q, limit, fuzzyMatchWithScore);
+      return { results, total };
     } catch (error: any) {
+      if (error?.message === 'Path does not exist') {
+        return reply.code(404).send({ error: 'Path does not exist' });
+      }
       request.log.error({ err: error }, 'Error searching files');
       return reply.code(500).send({ error: 'Failed to search files' });
     }

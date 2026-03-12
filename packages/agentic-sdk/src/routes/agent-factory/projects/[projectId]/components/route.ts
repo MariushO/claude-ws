@@ -1,8 +1,9 @@
 /**
  * Project components association routes — GET, POST, DELETE /api/agent-factory/projects/:projectId/components
- * Manages plugin-to-project associations (assign, list, remove)
+ * Thin transport adapter — all logic in agent-factory plugin registry service.
  */
 import { FastifyInstance } from 'fastify';
+import { PluginAlreadyAssignedError } from '../../../../../services/agent-factory/agent-factory-plugin-registry';
 
 export default async function agentFactoryProjectComponentsRoute(fastify: FastifyInstance) {
   fastify.get('/api/agent-factory/projects/:projectId/components', async (request, reply) => {
@@ -15,9 +16,16 @@ export default async function agentFactoryProjectComponentsRoute(fastify: Fastif
     const { projectId } = request.params as any;
     const { componentId } = request.body as any;
     if (!componentId) return reply.code(400).send({ error: 'Missing componentId' });
-    const result = await fastify.services.agentFactory.associatePlugin(projectId, componentId);
-    if (!result) return reply.code(404).send({ error: 'Plugin not found' });
-    return reply.code(201).send(result);
+
+    try {
+      const result = await fastify.services.agentFactory.associatePlugin(projectId, componentId);
+      return reply.code(201).send(result);
+    } catch (err: any) {
+      if (err instanceof PluginAlreadyAssignedError) {
+        return reply.code(409).send({ error: err.message });
+      }
+      throw err;
+    }
   });
 
   fastify.delete('/api/agent-factory/projects/:projectId/components', async (request, reply) => {

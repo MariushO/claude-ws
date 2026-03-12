@@ -1,9 +1,35 @@
 /**
- * Shell process DB tracking service - list, create, update status of shell process records (no actual spawning)
+ * Shell process DB tracking service - list, create, update status of shell process records (no actual spawning).
+ * toShellInfo() maps DB rows to the frontend ShellInfo shape used by all transport adapters.
  */
 import { eq, desc } from 'drizzle-orm';
 import * as schema from '../../db/database-schema';
 import { generateId } from '../../lib/nanoid-id-generator';
+
+export interface ShellInfo {
+  shellId: string;
+  projectId: string;
+  attemptId: string;
+  command: string;
+  pid: number;
+  startedAt: number;
+  isRunning: boolean;
+  exitCode: number | null;
+}
+
+/** Map a DB shell row to the canonical frontend ShellInfo shape */
+export function toShellInfo(s: any): ShellInfo {
+  return {
+    shellId: s.id,
+    projectId: s.projectId,
+    attemptId: s.attemptId || '',
+    command: s.command,
+    pid: s.pid || 0,
+    startedAt: s.createdAt,
+    isRunning: s.status === 'running',
+    exitCode: s.exitCode,
+  };
+}
 
 export function createShellService(db: any) {
   return {

@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       if (projectIdsList.length === 0) projectIdsList = undefined;
     }
 
-    const tasks = await taskService.listFiltered({
+    const tasks = await taskService.list({
       projectId: projectIdsList ? undefined : (projectId || undefined),
       projectIds: projectIdsList,
       statuses,

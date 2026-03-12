@@ -1,48 +1,32 @@
 /**
- * Project settings route - get and save project settings (selectedComponents, selectedAgentSets)
+ * Project settings route - get and save settings.
+ * Thin transport adapter — all logic in project-crud service.
  */
 import { FastifyInstance } from 'fastify';
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { ProjectValidationError } from '../../../../services/project/project-crud';
 
 export default async function projectSettingsRoute(fastify: FastifyInstance) {
   fastify.get('/api/projects/:id/settings', async (request, reply) => {
-    const { id } = request.params as any;
-    const project = await fastify.services.project.getById(id);
-    if (!project) return reply.code(404).send({ error: 'Project not found' });
-
-    const settingsPath = join(project.path, '.claude', 'project-settings.json');
-    if (!existsSync(settingsPath)) return reply.code(404).send({ error: 'Settings not found' });
-
     try {
-      const content = readFileSync(settingsPath, 'utf-8');
-      return { settings: JSON.parse(content) };
-    } catch {
-      return reply.code(500).send({ error: 'Failed to read settings' });
+      const settings = await fastify.services.project.getSettingsByProjectId((request.params as any).id);
+      return { settings };
+    } catch (error: any) {
+      if (error instanceof ProjectValidationError) {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      return reply.code(500).send({ error: 'Failed to fetch project settings' });
     }
   });
 
   fastify.post('/api/projects/:id/settings', async (request, reply) => {
     try {
-      const { id } = request.params as any;
-      const project = await fastify.services.project.getById(id);
-      if (!project) return reply.code(404).send({ error: 'Project not found' });
-
       const { settings } = request.body as any;
-      if (!settings) return reply.code(400).send({ error: 'Missing settings in request body' });
-
-      const newSettings = {
-        selectedComponents: settings.selectedComponents || [],
-        selectedAgentSets: settings.selectedAgentSets || [],
-      };
-
-      const claudeDir = join(project.path, '.claude');
-      if (!existsSync(claudeDir)) mkdirSync(claudeDir, { recursive: true });
-      writeFileSync(join(claudeDir, 'project-settings.json'), JSON.stringify(newSettings, null, 2), 'utf-8');
-
-      return { settings: newSettings };
+      const normalized = await fastify.services.project.updateSettingsByProjectId((request.params as any).id, settings);
+      return { settings: normalized };
     } catch (error: any) {
-      request.log.error({ err: error }, 'Failed to update project settings');
+      if (error instanceof ProjectValidationError) {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
       return reply.code(500).send({ error: 'Failed to update project settings' });
     }
   });

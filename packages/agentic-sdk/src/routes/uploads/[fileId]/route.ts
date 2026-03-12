@@ -1,40 +1,12 @@
 /**
  * Upload by fileId route - serve file content, get metadata, and delete tmp uploads
+ * Thin transport adapter — logic in upload service + tmp file processor.
  */
 import { FastifyInstance } from 'fastify';
-import { readFile, readdir, unlink, stat } from 'fs/promises';
-import { join, basename, extname } from 'path';
+import { readFile } from 'fs/promises';
+import { basename, extname, join } from 'path';
 import { getContentTypeForExtension } from '../../../lib/content-type-map';
-
-function getMimeType(filename: string): string {
-  return getContentTypeForExtension(extname(filename));
-}
-
-async function findFileInDirs(fileId: string, uploadsDir: string): Promise<{ path: string; filename: string } | null> {
-  // Check tmp directory first
-  const tmpDir = join(uploadsDir, 'tmp');
-  try {
-    const tmpFiles = await readdir(tmpDir);
-    const tmpFile = tmpFiles.find(f => f.startsWith(fileId));
-    if (tmpFile) return { path: join(tmpDir, tmpFile), filename: tmpFile };
-  } catch { /* tmp dir may not exist */ }
-
-  // Check attempt directories
-  try {
-    const dirs = await readdir(uploadsDir);
-    for (const dir of dirs) {
-      if (dir === 'tmp') continue;
-      const dirPath = join(uploadsDir, dir);
-      const dirStat = await stat(dirPath);
-      if (!dirStat.isDirectory()) continue;
-      const files = await readdir(dirPath);
-      const found = files.find(f => f.startsWith(fileId));
-      if (found) return { path: join(dirPath, found), filename: found };
-    }
-  } catch { /* uploads dir may not exist */ }
-
-  return null;
-}
+import { findUploadedFile, deleteTmpFile } from '../../../services/upload/tmp-file-processor-and-cleanup';
 
 export default async function uploadByFileIdRoute(fastify: FastifyInstance) {
   // GET /api/uploads/:fileId - serve file content (or metadata if ?metadata=true)
@@ -43,25 +15,22 @@ export default async function uploadByFileIdRoute(fastify: FastifyInstance) {
       const fileId = (request.params as any).fileId;
       const { metadata } = request.query as any;
 
-      // Validate fileId format (nanoid pattern)
       if (!fileId || !/^[a-zA-Z0-9_-]+$/.test(fileId)) {
         return reply.code(400).send({ error: 'Invalid file ID' });
       }
 
-      // If metadata requested, return DB record
       if (metadata) {
         const upload = await fastify.services.upload.getById(fileId);
         if (!upload) return reply.code(404).send({ error: 'Upload not found' });
         return upload;
       }
 
-      // Otherwise serve actual file content
       const uploadsDir = join(fastify.envConfig.dataDir, 'uploads');
-      const found = await findFileInDirs(fileId, uploadsDir);
+      const found = await findUploadedFile(uploadsDir, fileId);
       if (!found) return reply.code(404).send({ error: 'File not found' });
 
       const buffer = await readFile(found.path);
-      const mimeType = getMimeType(found.filename);
+      const mimeType = getContentTypeForExtension(extname(found.filename));
 
       reply.header('Content-Type', mimeType);
       reply.header('Content-Disposition', `inline; filename="${basename(found.filename)}"`);
@@ -77,22 +46,14 @@ export default async function uploadByFileIdRoute(fastify: FastifyInstance) {
   fastify.delete('/api/uploads/:fileId', async (request, reply) => {
     try {
       const fileId = (request.params as any).fileId;
-
       if (!fileId || !/^[a-zA-Z0-9_-]+$/.test(fileId)) {
         return reply.code(400).send({ error: 'Invalid file ID' });
       }
 
-      // Only allow deleting tmp files (pending uploads)
-      const tmpDir = join(fastify.envConfig.dataDir, 'uploads', 'tmp');
-      try {
-        const tmpFiles = await readdir(tmpDir);
-        const tmpFile = tmpFiles.find(f => f.startsWith(fileId));
-        if (!tmpFile) return reply.code(404).send({ error: 'Tmp file not found' });
-        await unlink(join(tmpDir, tmpFile));
-        return { success: true };
-      } catch {
-        return reply.code(404).send({ error: 'Tmp file not found' });
-      }
+      const uploadsDir = join(fastify.envConfig.dataDir, 'uploads');
+      const deleted = await deleteTmpFile(uploadsDir, fileId);
+      if (!deleted) return reply.code(404).send({ error: 'Tmp file not found' });
+      return { success: true };
     } catch (error: any) {
       request.log.error({ err: error }, 'Failed to delete file');
       return reply.code(500).send({ error: 'Failed to delete file' });

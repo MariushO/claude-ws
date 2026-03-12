@@ -1,81 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { mkdir, writeFile, access } from 'fs/promises';
-import { join } from 'path';
-import { createLogger } from '@/lib/logger';
-import { createProjectService } from '@agentic-sdk/services/project/project-crud';
+import { createProjectService, ProjectValidationError } from '@agentic-sdk/services/project/project-crud';
 
-const log = createLogger('Projects');
 const projectService = createProjectService(db);
 
 // GET /api/projects - List all projects
 export async function GET() {
   try {
-    const projects = await projectService.list();
-
-    return NextResponse.json(projects);
+    return NextResponse.json(await projectService.list());
   } catch (error) {
-    log.error({ error }, 'Failed to fetch projects');
-    return NextResponse.json(
-      { error: 'Failed to fetch projects' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch projects' }, { status: 500 });
   }
 }
 
 // POST /api/projects - Create a new project
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { name, path } = body;
-
-    if (!name || !path) {
-      return NextResponse.json(
-        { error: 'Name and path are required' },
-        { status: 400 }
-      );
-    }
-
-    // Create the project folder
-    try {
-      await mkdir(path, { recursive: true });
-    } catch (mkdirError: any) {
-      // If folder already exists, that's okay (might be opening existing project)
-      if (mkdirError?.code !== 'EEXIST') {
-        log.error({ error: mkdirError }, 'Failed to create project folder');
-        return NextResponse.json(
-          { error: 'Failed to create project folder: ' + mkdirError.message },
-          { status: 500 }
-        );
-      }
-    }
-
-    // Generate CLAUDE.md if it doesn't exist
-    const claudeMdPath = join(path, 'CLAUDE.md');
-    try {
-      await access(claudeMdPath);
-    } catch {
-      const claudeMdContent = `# CLAUDE.md\n\nThis file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.\n\n<!-- TODO: Update this file once the project is scaffolded with actual build commands, architecture, and conventions. -->\n`;
-      await writeFile(claudeMdPath, claudeMdContent, 'utf-8');
-    }
-
-    const newProject = await projectService.create({ name, path });
-
-    return NextResponse.json(newProject, { status: 201 });
+    const { name, path } = await request.json();
+    const project = await projectService.createProject({ name, path });
+    return NextResponse.json(project, { status: 201 });
   } catch (error: any) {
-    log.error({ error }, 'Failed to create project');
-
-    // Handle unique constraint violation (duplicate path)
-    if (error?.code === 'SQLITE_CONSTRAINT_UNIQUE') {
-      return NextResponse.json(
-        { error: 'A project with this path already exists' },
-        { status: 409 }
-      );
+    if (error instanceof ProjectValidationError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode });
     }
-
-    return NextResponse.json(
-      { error: 'Failed to create project' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to create project' }, { status: 500 });
   }
 }

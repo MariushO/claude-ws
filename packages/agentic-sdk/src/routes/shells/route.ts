@@ -1,7 +1,9 @@
 /**
- * Shells route - list, create, update status, and get shell process records per project
+ * Shells route - list, create, update status, and get shell process records per project.
+ * Response mapping delegated to toShellInfo() from the shell service.
  */
 import { FastifyInstance } from 'fastify';
+import { toShellInfo } from '../../services/shell/shell-process-db-tracking';
 
 export default async function shellsRoute(fastify: FastifyInstance) {
   fastify.get('/api/shells', async (request, reply) => {
@@ -9,16 +11,7 @@ export default async function shellsRoute(fastify: FastifyInstance) {
       const { projectId } = request.query as any;
       if (!projectId) return reply.code(400).send({ error: 'projectId is required' });
       const shells = await fastify.services.shell.list(projectId);
-      return shells.map((s: any) => ({
-        shellId: s.id,
-        projectId: s.projectId,
-        attemptId: s.attemptId || '',
-        command: s.command,
-        pid: s.pid || 0,
-        startedAt: s.createdAt,
-        isRunning: s.status === 'running',
-        exitCode: s.exitCode,
-      }));
+      return shells.map(toShellInfo);
     } catch (err) {
       fastify.log.error(err, 'Failed to list shells');
       return reply.code(500).send({ error: 'Internal server error' });

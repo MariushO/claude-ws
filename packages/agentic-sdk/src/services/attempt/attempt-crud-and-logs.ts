@@ -2,6 +2,9 @@
  * Attempt CRUD service - create/update attempts and manage streaming attempt_logs entries
  */
 import { eq } from 'drizzle-orm';
+import { existsSync } from 'fs';
+import { readFile } from 'fs/promises';
+import { join } from 'path';
 import * as schema from '../../db/database-schema';
 import { generateId } from '../../lib/nanoid-id-generator';
 
@@ -106,6 +109,35 @@ export function createAttemptService(db: any) {
       await db.update(schema.attempts)
         .set({ status: 'cancelled', completedAt: Date.now() })
         .where(eq(schema.attempts.id, id));
+    },
+
+    /** Parse JSON logs into typed messages, filtering out invalid entries */
+    parseLogsToMessages(logs: Array<{ type: string; content: string }>) {
+      return logs
+        .filter(log => log.type === 'json')
+        .map(log => {
+          try { return JSON.parse(log.content); }
+          catch { return null; }
+        })
+        .filter(Boolean);
+    },
+
+    /** Get attempt with parsed output messages (logs → ClaudeOutput[]) */
+    async getWithParsedOutput(id: string) {
+      const result = await this.getById(id);
+      if (!result) return null;
+      const { logs, ...attemptData } = result;
+      const messages = this.parseLogsToMessages(logs);
+      return { attemptData, messages };
+    },
+
+    /** Read output file from tmp directory for formatted output responses */
+    async readOutputFile(attemptId: string, format: string): Promise<{ content: string; found: true } | { found: false }> {
+      const dataDir = process.env.DATA_DIR || join(process.env.CLAUDE_WS_USER_CWD || process.cwd(), 'data');
+      const filePath = join(dataDir, 'tmp', `${attemptId}.${format}`);
+      if (!existsSync(filePath)) return { found: false };
+      const content = await readFile(filePath, 'utf-8');
+      return { content, found: true };
     },
   };
 }

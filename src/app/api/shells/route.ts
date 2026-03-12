@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { createShellService } from '@agentic-sdk/services/shell/shell-process-db-tracking';
+import { createShellService, toShellInfo } from '@agentic-sdk/services/shell/shell-process-db-tracking';
 
 const shellService = createShellService(db);
 
@@ -18,20 +18,7 @@ export async function GET(request: NextRequest) {
     }
 
     const shells = await shellService.list(projectId);
-
-    // Map to frontend format
-    const shellInfos = shells.map((s: any) => ({
-      shellId: s.id,
-      projectId: s.projectId,
-      attemptId: s.attemptId || '',
-      command: s.command,
-      pid: s.pid || 0,
-      startedAt: s.createdAt,
-      isRunning: s.status === 'running',
-      exitCode: s.exitCode,
-    }));
-
-    return NextResponse.json(shellInfos);
+    return NextResponse.json(shells.map(toShellInfo));
   } catch (error) {
     console.error('Failed to fetch shells:', error);
     return NextResponse.json(

@@ -7,6 +7,22 @@ import { eq, desc, and, lt, gte, asc } from 'drizzle-orm';
 import * as schema from '../../db/database-schema';
 import { generateId } from '../../lib/nanoid-id-generator';
 
+export class CheckpointNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CheckpointNotFoundError';
+  }
+}
+
+/** Dependencies for SDK file rewind — injected by caller (runtime singletons) */
+export interface SdkRewindDeps {
+  attemptSdkFileRewind: (
+    checkpoint: { sessionId: string; gitCommitHash: string | null },
+    project: { path: string }
+  ) => Promise<{ success: boolean; error?: string }>;
+  setRewindState: (taskId: string, sessionId: string, messageUuid: string) => Promise<void>;
+}
+
 export function createCheckpointOperationsService(db: any) {
   return {
     /**
@@ -248,6 +264,83 @@ export function createCheckpointOperationsService(db: any) {
         attempt,
         deletedAttemptCount: attemptIdsToDelete.size,
         deletedCheckpointCount: deletedCheckpoints.length,
+      };
+    },
+
+    /**
+     * Full fork orchestration: getRelated → SDK file rewind → DB fork → setRewindState.
+     * Runtime singletons (checkpointManager, sessionManager) injected via deps.
+     */
+    async forkWithSideEffects(checkpointId: string, deps: SdkRewindDeps) {
+      // Get checkpoint with related data
+      const related = await this.getCheckpointWithRelated(checkpointId);
+      if (!related) throw new CheckpointNotFoundError('Checkpoint not found');
+
+      const { checkpoint, task: originalTask, attempt, project } = related;
+      if (!originalTask) throw new CheckpointNotFoundError('Original task not found');
+
+      // Attempt SDK file rewind if checkpoint UUID exists
+      let sdkRewindResult: { success: boolean; error?: string } | null = null;
+      if (checkpoint.gitCommitHash && checkpoint.sessionId && project) {
+        sdkRewindResult = await deps.attemptSdkFileRewind(checkpoint, project);
+      }
+
+      // Fork DB ops (creates new task, copies attempts/checkpoints)
+      const { newTask, newTaskId } = await this.fork(checkpointId);
+
+      // Set rewind state so the new task's first attempt resumes from the checkpoint
+      if (checkpoint.gitCommitHash) {
+        await deps.setRewindState(newTaskId, checkpoint.sessionId, checkpoint.gitCommitHash);
+      }
+
+      return {
+        success: true,
+        task: newTask,
+        taskId: newTaskId,
+        originalTaskId: originalTask.id,
+        sessionId: checkpoint.sessionId,
+        messageUuid: checkpoint.gitCommitHash,
+        attemptId: checkpoint.attemptId,
+        attemptPrompt: attempt?.prompt || null,
+        sdkRewind: sdkRewindResult,
+        conversationForked: !!checkpoint.gitCommitHash,
+      };
+    },
+
+    /**
+     * Full rewind orchestration: getRelated → SDK file rewind → DB cleanup → setRewindState.
+     * Runtime singletons (checkpointManager, sessionManager) injected via deps.
+     */
+    async rewindWithSideEffects(checkpointId: string, rewindFiles: boolean, deps: SdkRewindDeps) {
+      // Get checkpoint with related data (for SDK rewind + response)
+      const related = await this.getCheckpointWithRelated(checkpointId);
+      if (!related) throw new CheckpointNotFoundError('Checkpoint not found');
+
+      const { checkpoint, attempt, project } = related;
+
+      // Attempt SDK file rewind if requested
+      let sdkRewindResult: { success: boolean; error?: string } | null = null;
+      if (rewindFiles && checkpoint.gitCommitHash && checkpoint.sessionId && project) {
+        sdkRewindResult = await deps.attemptSdkFileRewind(checkpoint, project);
+      }
+
+      // Delete checkpoint's attempt + all later attempts/checkpoints
+      await this.rewindWithCleanup(checkpointId);
+
+      // Set rewind state on task for session resumption
+      if (checkpoint.gitCommitHash) {
+        await deps.setRewindState(checkpoint.taskId, checkpoint.sessionId, checkpoint.gitCommitHash);
+      }
+
+      return {
+        success: true,
+        sessionId: checkpoint.sessionId,
+        messageUuid: checkpoint.gitCommitHash,
+        taskId: checkpoint.taskId,
+        attemptId: checkpoint.attemptId,
+        attemptPrompt: attempt?.prompt || null,
+        sdkRewind: sdkRewindResult,
+        conversationRewound: !!checkpoint.gitCommitHash,
       };
     },
   };

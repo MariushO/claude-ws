@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyApiKey, unauthorizedResponse } from '@/lib/api-auth';
-import { createAgentFactoryService } from '@agentic-sdk/services/agent-factory/agent-factory-plugin-registry';
+import { createAgentFactoryService, PluginAlreadyAssignedError } from '@agentic-sdk/services/agent-factory/agent-factory-plugin-registry';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('AFProjectComponents');
@@ -50,16 +50,12 @@ export async function POST(
       return NextResponse.json({ error: 'Plugin not found' }, { status: 404 });
     }
 
-    try {
-      const assignment = await agentFactoryService.associatePlugin(projectId, componentId);
-      return NextResponse.json({ assignment }, { status: 201 });
-    } catch (err: any) {
-      if (err?.message?.includes('UNIQUE') || err?.code === 'SQLITE_CONSTRAINT') {
-        return NextResponse.json({ error: 'Plugin already assigned to project' }, { status: 409 });
-      }
-      throw err;
-    }
+    const assignment = await agentFactoryService.associatePlugin(projectId, componentId);
+    return NextResponse.json({ assignment }, { status: 201 });
   } catch (error) {
+    if (error instanceof PluginAlreadyAssignedError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     log.error({ error }, 'Error assigning plugin');
     return NextResponse.json({ error: 'Failed to assign plugin' }, { status: 500 });
   }

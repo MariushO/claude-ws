@@ -1,9 +1,11 @@
 /**
  * GET /api/files/metadata - return file mtime and size without reading content
+ * Thin transport adapter — delegates to createFileOperationsService
  */
 import { FastifyInstance } from 'fastify';
-import fs from 'fs';
-import path from 'path';
+import { createFileOperationsService } from '../../../services/files/operations-and-upload';
+
+const svc = createFileOperationsService();
 
 export default async function filesMetadataRoute(fastify: FastifyInstance) {
   fastify.get('/api/files/metadata', async (request, reply) => {
@@ -11,21 +13,17 @@ export default async function filesMetadataRoute(fastify: FastifyInstance) {
     if (!filePath || !basePath) {
       return reply.code(400).send({ error: 'path and basePath parameters are required' });
     }
-
-    const fullPath = path.resolve(basePath, filePath);
-    const normalizedBase = path.resolve(basePath);
-    if (!fullPath.startsWith(normalizedBase)) {
-      return reply.code(403).send({ error: 'Invalid path: directory traversal detected' });
+    try {
+      return svc.getMetadata(basePath, filePath);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        if (error.message === 'Path traversal detected') {
+          return reply.code(403).send({ error: 'Invalid path: directory traversal detected' });
+        }
+        if (error.message === 'File not found') return reply.code(404).send({ error: 'File not found' });
+        if (error.message === 'Path is not a file') return reply.code(400).send({ error: 'Path is not a file' });
+      }
+      return reply.code(500).send({ error: 'Failed to get file metadata' });
     }
-    if (!fs.existsSync(fullPath)) {
-      return reply.code(404).send({ error: 'File not found' });
-    }
-
-    const stats = fs.statSync(fullPath);
-    if (!stats.isFile()) {
-      return reply.code(400).send({ error: 'Path is not a file' });
-    }
-
-    return { mtime: stats.mtimeMs, size: stats.size };
   });
 }

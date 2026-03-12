@@ -56,5 +56,11 @@ export function createUploadService(db: any, uploadsDir: string) {
         await db.delete(schema.attemptFiles).where(eq(schema.attemptFiles.id, id));
       }
     },
+
+    /** Delete the entire upload directory for an attempt (used during task deletion) */
+    async cleanupAttemptFiles(attemptId: string) {
+      const attemptDir = path.join(uploadsDir, attemptId);
+      await fs.rm(attemptDir, { recursive: true, force: true });
+    },
   };
 }

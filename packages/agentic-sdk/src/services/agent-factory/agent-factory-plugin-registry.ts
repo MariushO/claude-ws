@@ -7,15 +7,40 @@ import fs from 'fs/promises';
 import path from 'path';
 import * as schema from '../../db/database-schema';
 import { generateId } from '../../lib/nanoid-id-generator';
+import { dependencyExtractor } from './dependency-extractor';
+import { claudeDependencyAnalyzer } from './claude-dependency-analyzer';
+import { installScriptGenerator } from './install-script-generator';
+
+export class AgentFactoryValidationError extends Error {
+  constructor(message: string, public statusCode: number) {
+    super(message);
+    this.name = 'AgentFactoryValidationError';
+  }
+}
+
+export class PluginAlreadyAssignedError extends Error {
+  constructor(message: string = 'Plugin already assigned to project') {
+    super(message);
+    this.name = 'PluginAlreadyAssignedError';
+  }
+}
 
 /** Explicit service interface — avoids TS inference truncation on large object literals with self-references */
 export interface AgentFactoryService {
   listPlugins(filters?: { type?: string; projectId?: string }): Promise<any>;
+  /** List plugins, filtering out imported ones whose source no longer exists on disk */
+  listPluginsWithExistenceFilter(filters?: { type?: string }): Promise<any[]>;
   getPlugin(id: string): Promise<any>;
   createPlugin(data: { type: 'skill' | 'command' | 'agent' | 'agent_set'; name: string; description?: string; sourcePath?: string; storageType?: 'local' | 'imported' | 'external'; agentSetPath?: string; metadata?: string }): Promise<any>;
+  /** Create plugin record AND generate file on disk. Returns {plugin} or {error, statusCode}. */
+  createPluginWithFile(data: { type: 'skill' | 'command' | 'agent'; name: string; description?: string; storageType?: string; metadata?: any }): Promise<{ plugin: any } | { error: string; statusCode: number }>;
   updatePlugin(id: string, data: Partial<any>): Promise<any>;
+  /** Delete plugin from DB and optionally remove its files from disk (local/imported in agent-factory dir) */
+  deletePluginWithFiles(id: string): Promise<void>;
   deletePlugin(id: string): Promise<void>;
   listProjectPlugins(projectId: string): Promise<any>;
+  /** List project plugins, removing orphans (missing source) from DB */
+  listProjectPluginsWithOrphanCleanup(projectId: string): Promise<any[]>;
   associatePlugin(projectId: string, pluginId: string): Promise<any>;
   disassociatePlugin(projectId: string, pluginId: string): Promise<void>;
   listDependencies(pluginId: string): Promise<any>;
@@ -50,6 +75,17 @@ export function createAgentFactoryService(db: any): AgentFactoryService {
       return query.all();
     },
 
+    async listPluginsWithExistenceFilter(filters?: { type?: string }) {
+      const { existsSync } = await import('fs');
+      const all = await this.listPlugins(filters);
+      return (all as any[]).filter((plugin: any) => {
+        if (plugin.storageType === 'imported') {
+          return plugin.sourcePath && existsSync(plugin.sourcePath);
+        }
+        return true;
+      });
+    },
+
     async getPlugin(id: string) {
       return db.select().from(schema.agentFactoryPlugins)
         .where(eq(schema.agentFactoryPlugins.id, id)).get();
@@ -82,6 +118,46 @@ export function createAgentFactoryService(db: any): AgentFactoryService {
       return record;
     },
 
+    async createPluginWithFile(data: { type: 'skill' | 'command' | 'agent'; name: string; description?: string; storageType?: string; metadata?: any }) {
+      const { generatePluginFile, getPluginPath, pluginExists } = await import('./plugin-file-generator');
+      const { type, name, description, storageType = 'local', metadata } = data;
+      const pluginType = type as 'skill' | 'command' | 'agent';
+
+      if (!['skill', 'command', 'agent'].includes(pluginType)) {
+        return { error: 'Invalid type. Must be skill, command, or agent', statusCode: 400 };
+      }
+
+      if (pluginExists(pluginType, name)) {
+        return { error: `Plugin file already exists at ${getPluginPath(pluginType, name)}`, statusCode: 409 };
+      }
+
+      const allPlugins = await this.listPlugins({ type: pluginType });
+      if ((allPlugins as any[]).find((p: any) => p.name === name)) {
+        return { error: 'Plugin with this name already exists in database', statusCode: 409 };
+      }
+
+      try {
+        await generatePluginFile({ type: pluginType, name, description: description || undefined });
+      } catch (fileError: unknown) {
+        const err = fileError as Error & { code?: string };
+        if (err.code === 'PLUGIN_EXISTS') {
+          return { error: err.message, statusCode: 409 };
+        }
+        return { error: 'Failed to create plugin file on disk', statusCode: 500 };
+      }
+
+      const actualPath = getPluginPath(pluginType, name);
+      const plugin = await this.createPlugin({
+        type: pluginType,
+        name,
+        description: description || undefined,
+        sourcePath: actualPath,
+        storageType: storageType as any,
+        metadata: metadata ? JSON.stringify(metadata) : undefined,
+      });
+      return { plugin };
+    },
+
     async updatePlugin(id: string, data: Partial<schema.AgentFactoryPlugin>) {
       await db.update(schema.agentFactoryPlugins)
         .set({ ...data, updatedAt: Date.now() })
@@ -92,6 +168,61 @@ export function createAgentFactoryService(db: any): AgentFactoryService {
     async deletePlugin(id: string) {
       await db.delete(schema.agentFactoryPlugins)
         .where(eq(schema.agentFactoryPlugins.id, id));
+    },
+
+    async deletePluginWithFiles(id: string) {
+      const existing = await this.getPlugin(id);
+      if (!existing) return;
+
+      const { existsSync } = await import('fs');
+      const { rm } = await import('fs/promises');
+      const { dirname: dirnameFs } = await import('path');
+
+      let shouldDeleteFiles = false;
+      let deletePath: string | null = null;
+
+      if (existing.storageType === 'local' || existing.storageType === 'imported') {
+        if (existing.type === 'agent_set') {
+          shouldDeleteFiles = !!(existing.agentSetPath && existing.agentSetPath.includes('/agent-factory/'));
+          deletePath = existing.agentSetPath || null;
+        } else {
+          shouldDeleteFiles = !!(existing.sourcePath && existing.sourcePath.includes('/agent-factory/'));
+          deletePath = existing.sourcePath || null;
+        }
+      }
+
+      if (shouldDeleteFiles && deletePath && existsSync(deletePath)) {
+        try {
+          if (existing.type === 'skill') {
+            await rm(dirnameFs(deletePath), { recursive: true, force: true });
+          } else if (existing.type === 'agent_set') {
+            await rm(deletePath, { recursive: true, force: true });
+          } else {
+            await rm(deletePath, { force: true });
+          }
+        } catch { /* continue with DB deletion even if file deletion fails */ }
+      }
+
+      await this.deletePlugin(id);
+    },
+
+    async listProjectPluginsWithOrphanCleanup(projectId: string) {
+      const { existsSync } = await import('fs');
+      const assigned = await this.listProjectPlugins(projectId);
+
+      const missingIds: string[] = [];
+      const valid = (assigned as any[]).filter((plugin: any) => {
+        const pathToCheck = plugin.type === 'agent_set' ? plugin.agentSetPath : plugin.sourcePath;
+        if (pathToCheck && existsSync(pathToCheck)) return true;
+        missingIds.push(plugin.id);
+        return false;
+      });
+
+      for (const pluginId of missingIds) {
+        await this.deletePlugin(pluginId);
+      }
+
+      return valid;
     },
 
     async listProjectPlugins(projectId: string) {
@@ -115,10 +246,17 @@ export function createAgentFactoryService(db: any): AgentFactoryService {
     },
 
     async associatePlugin(projectId: string, pluginId: string) {
-      const id = generateId('pp');
-      const record = { id, projectId, pluginId, enabled: true, createdAt: Date.now() };
-      await db.insert(schema.projectPlugins).values(record);
-      return record;
+      try {
+        const id = generateId('pp');
+        const record = { id, projectId, pluginId, enabled: true, createdAt: Date.now() };
+        await db.insert(schema.projectPlugins).values(record);
+        return record;
+      } catch (err: any) {
+        if (err?.message?.includes('UNIQUE') || err?.code === 'SQLITE_CONSTRAINT') {
+          throw new PluginAlreadyAssignedError();
+        }
+        throw err;
+      }
     },
 
     async disassociatePlugin(projectId: string, pluginId: string) {
@@ -423,18 +561,40 @@ export function createAgentFactoryService(db: any): AgentFactoryService {
       return { success: true, message: `Uninstalled ${component.name}` };
     },
 
-    async extractDependencies(_sourcePath: string, _type: string, _useClaude?: boolean) {
-      // Dependency extraction requires external analyzers not available in SDK
+    async extractDependencies(sourcePath: string, type: string, useClaude?: boolean) {
+      const { existsSync } = await import('fs');
+      const { homedir } = await import('os');
+      const resolvedPath = path.resolve(sourcePath);
+      if (!resolvedPath.startsWith(homedir())) {
+        throw new AgentFactoryValidationError('Access denied', 403);
+      }
+      if (!existsSync(sourcePath)) {
+        throw new AgentFactoryValidationError('Source path not found', 404);
+      }
+
+      let extracted;
+      if (useClaude) {
+        const analyzed = await claudeDependencyAnalyzer.analyze(sourcePath, type);
+        extracted = { libraries: analyzed.libraries, plugins: analyzed.plugins };
+      } else {
+        extracted = await dependencyExtractor.extract(sourcePath, type);
+      }
+
+      const installScripts = installScriptGenerator.generateAll(extracted.libraries);
+      const dependencyTree = (extracted.plugins || []).map((c: any) => ({
+        type: c.type, name: c.name, depth: 1,
+      }));
+
       return {
-        libraries: [],
-        plugins: [],
-        installScripts: {},
-        dependencyTree: [],
-        depth: 0,
+        libraries: extracted.libraries,
+        plugins: extracted.plugins || [],
+        installScripts,
+        dependencyTree,
+        depth: 1,
         hasCycles: false,
-        totalPlugins: 0,
+        totalPlugins: (extracted.plugins || []).length,
         resolvedAt: Date.now(),
-        analysisMethod: 'none',
+        analysisMethod: useClaude ? 'claude-sdk' : 'regex',
       };
     },
 

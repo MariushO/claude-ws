@@ -62,12 +62,15 @@ export { createFileSearchService } from './services/files/search-and-content-sea
 export { createChatHistorySearchService } from './services/chat-history-search';
 
 // --- Shells ---
-export { createShellService } from './services/shell/shell-process-db-tracking';
+export { createShellService, toShellInfo, type ShellInfo } from './services/shell/shell-process-db-tracking';
 
 // --- Commands ---
 export {
   createCommandService,
   type CommandInfo,
+  type CommandContent,
+  type CommandPromptResult,
+  type CommandFileError,
 } from './services/command/slash-command-listing';
 
 // --- Force-create helpers ---

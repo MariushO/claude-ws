@@ -13,12 +13,18 @@ import { createProjectService } from './services/project/project-crud';
 import { createTaskService } from './services/task/task-crud-and-reorder';
 import { createAttemptService } from './services/attempt/attempt-crud-and-logs';
 import { createCheckpointService } from './services/checkpoint/checkpoint-crud-and-rewind';
+import { createCheckpointOperationsService } from './services/checkpoints/fork-and-rewind-operations';
 import { createFileService } from './services/file/filesystem-read-write';
 import { createSearchService } from './services/search/content-search-and-file-glob';
 import { createUploadService } from './services/attempt/attempt-file-upload-storage';
 import { createShellService } from './services/shell/shell-process-db-tracking';
 import { createCommandService } from './services/command/slash-command-listing';
 import { createAgentFactoryService, type AgentFactoryService } from './services/agent-factory/agent-factory-plugin-registry';
+import { createForceCreateService } from './services/force-create-project-and-task';
+import { createAuthVerificationService } from './services/auth-verification';
+import { createAttemptWorkflowService } from './services/attempts/workflow-tree';
+import { createFileTreeBuilderService } from './services/files/tree-builder';
+import { createAgentFactoryFilesystemService } from './services/agent-factory/plugin-filesystem-operations';
 import type { EnvConfig } from './config/env-config';
 
 // Route imports — folder-based domain routes
@@ -50,12 +56,18 @@ export async function createApp(envConfig: EnvConfig) {
     task: createTaskService(db),
     attempt: createAttemptService(db),
     checkpoint: createCheckpointService(db),
+    checkpointOps: createCheckpointOperationsService(db),
     file: createFileService(),
     search: createSearchService(),
     upload: createUploadService(db, uploadsDir),
     shell: createShellService(db),
     command: createCommandService(),
     agentFactory: createAgentFactoryService(db),
+    forceCreate: createForceCreateService(db),
+    auth: createAuthVerificationService(envConfig.apiAccessKey),
+    attemptWorkflow: createAttemptWorkflowService(db),
+    fileTreeBuilder: createFileTreeBuilderService(),
+    agentFactoryFs: createAgentFactoryFilesystemService(),
   };
 
   // Create agent manager
@@ -147,12 +159,18 @@ declare module 'fastify' {
       task: ReturnType<typeof createTaskService>;
       attempt: ReturnType<typeof createAttemptService>;
       checkpoint: ReturnType<typeof createCheckpointService>;
+      checkpointOps: ReturnType<typeof createCheckpointOperationsService>;
       file: ReturnType<typeof createFileService>;
       search: ReturnType<typeof createSearchService>;
       upload: ReturnType<typeof createUploadService>;
       shell: ReturnType<typeof createShellService>;
       command: ReturnType<typeof createCommandService>;
       agentFactory: AgentFactoryService;
+      forceCreate: ReturnType<typeof createForceCreateService>;
+      auth: ReturnType<typeof createAuthVerificationService>;
+      attemptWorkflow: ReturnType<typeof createAttemptWorkflowService>;
+      fileTreeBuilder: ReturnType<typeof createFileTreeBuilderService>;
+      agentFactoryFs: ReturnType<typeof createAgentFactoryFilesystemService>;
     };
     agentManager: AgentManager;
   }

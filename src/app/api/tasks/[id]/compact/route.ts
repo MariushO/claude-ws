@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { agentManager } from '@/lib/agent-manager';
-import { sessionManager } from '@/lib/session-manager';
 import { createLogger } from '@/lib/logger';
 import { createTaskService } from '@agentic-sdk/services/task/task-crud-and-reorder';
 import { createProjectService } from '@agentic-sdk/services/project/project-crud';
@@ -30,7 +29,8 @@ export async function POST(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    const conversationSummary = await sessionManager.getConversationSummary(taskId);
+    // Use SDK service method — single source of truth for conversation summary logic
+    const conversationSummary = await taskService.getConversationSummaryForCompact(taskId);
 
     const attempt = await attemptService.create({
       taskId,

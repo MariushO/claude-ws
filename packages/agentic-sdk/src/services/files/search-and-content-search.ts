@@ -136,7 +136,12 @@ export function createFileSearchService() {
 
       let patternStr = useRegex ? query : escapeRegex(query);
       if (wholeWord) patternStr = `\\b${patternStr}\\b`;
-      const pattern = new RegExp(patternStr, caseSensitive ? 'g' : 'gi');
+      let pattern: RegExp;
+      try {
+        pattern = new RegExp(patternStr, caseSensitive ? 'g' : 'gi');
+      } catch {
+        throw new Error('Invalid regex pattern');
+      }
 
       const results: Array<{ file: string; matches: Array<{ lineNumber: number; line: string; column: number; matchLength: number }> }> = [];
       let totalMatches = 0;

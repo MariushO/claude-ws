@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { formatOutput } from '@/lib/output-formatter';
-import { readFile } from 'fs/promises';
-import { join } from 'path';
-import { existsSync } from 'fs';
 import { getContentTypeForFormat } from '@/lib/content-types';
 import { createAttemptService } from '@agentic-sdk/services/attempt/attempt-crud-and-logs';
 import type { ClaudeOutput, OutputFormat } from '@/types';
@@ -37,31 +34,14 @@ export async function GET(
 
     // If ?output_format is present and attempt has a format, return the generated file
     if (wantsFormatted && storedFormat) {
-      // Use DATA_DIR for output file location
-      const dataDir = process.env.DATA_DIR || join(process.env.CLAUDE_WS_USER_CWD || process.cwd(), 'data');
-      const filePath = join(dataDir, 'tmp', `${id}.${storedFormat}`);
-
-      if (existsSync(filePath)) {
-        try {
-          const content = await readFile(filePath, 'utf-8');
-          const contentType = getContentTypeForFormat(storedFormat);
-
-          return new NextResponse(content, {
-            headers: {
-              'Content-Type': contentType,
-            },
-          });
-        } catch (readError) {
-          return NextResponse.json(
-            { error: 'Failed to read output file' },
-            { status: 500 }
-          );
-        }
+      const fileResult = await attemptService.readOutputFile(id, storedFormat);
+      if (fileResult.found) {
+        return new NextResponse(fileResult.content, {
+          headers: { 'Content-Type': getContentTypeForFormat(storedFormat) },
+        });
       }
-
-      // File doesn't exist yet
       return NextResponse.json(
-        { error: 'Output file not found', filePath },
+        { error: 'Output file not found' },
         { status: 404 }
       );
     }
@@ -75,16 +55,7 @@ export async function GET(
     }
 
     // Format according to the stored outputFormat
-    const messages: ClaudeOutput[] = logs
-      .filter((log: { type: string }) => log.type === 'json')
-      .map((log: { content: string }) => {
-        try {
-          return JSON.parse(log.content) as ClaudeOutput;
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean) as ClaudeOutput[];
+    const messages = attemptService.parseLogsToMessages(logs) as ClaudeOutput[];
 
     const formatted = formatOutput(
       messages,

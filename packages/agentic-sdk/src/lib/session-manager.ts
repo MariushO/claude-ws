@@ -136,6 +136,21 @@ export class SessionManager {
     return null;
   }
 
+  /**
+   * Set rewind state for a task — stores sessionId and messageUuid so the next
+   * attempt resumes at the checkpoint's conversation position.
+   */
+  async setRewindState(taskId: string, sessionId: string, messageUuid: string): Promise<void> {
+    await this.db
+      .update(schema.tasks)
+      .set({
+        rewindSessionId: sessionId,
+        rewindMessageUuid: messageUuid,
+        updatedAt: Date.now(),
+      })
+      .where(eq(schema.tasks.id, taskId));
+  }
+
   /** Get session options with automatic corruption detection and auto-fix */
   async getSessionOptionsWithAutoFix(taskId: string): Promise<SessionOptions> {
     const options = await this.getSessionOptions(taskId);

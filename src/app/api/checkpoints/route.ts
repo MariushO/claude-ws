@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { createCheckpointService } from '@agentic-sdk/services/checkpoints/crud-and-rewind';
+import { createCheckpointService } from '@agentic-sdk/services/checkpoint/checkpoint-crud-and-rewind';
 
 const checkpointService = createCheckpointService(db);
 

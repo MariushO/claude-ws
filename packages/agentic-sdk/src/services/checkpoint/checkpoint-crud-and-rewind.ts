@@ -1,7 +1,7 @@
 /**
  * Checkpoint CRUD service - list, create, rewind, and bulk-backfill conversation state snapshots
  */
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import * as schema from '../../db/database-schema';
 import { generateId } from '../../lib/nanoid-id-generator';
 
@@ -12,6 +12,42 @@ export function createCheckpointService(db: any) {
         .where(eq(schema.checkpoints.taskId, taskId))
         .orderBy(schema.checkpoints.createdAt)
         .all();
+    },
+
+    /** List checkpoints with attempt prompt info (JOIN with attempts table) */
+    async listWithAttemptInfo(taskId: string) {
+      const results = await db
+        .select({
+          id: schema.checkpoints.id,
+          taskId: schema.checkpoints.taskId,
+          attemptId: schema.checkpoints.attemptId,
+          sessionId: schema.checkpoints.sessionId,
+          gitCommitHash: schema.checkpoints.gitCommitHash,
+          messageCount: schema.checkpoints.messageCount,
+          summary: schema.checkpoints.summary,
+          createdAt: schema.checkpoints.createdAt,
+          attemptDisplayPrompt: schema.attempts.displayPrompt,
+          attemptPrompt: schema.attempts.prompt,
+        })
+        .from(schema.checkpoints)
+        .leftJoin(schema.attempts, eq(schema.checkpoints.attemptId, schema.attempts.id))
+        .where(eq(schema.checkpoints.taskId, taskId))
+        .orderBy(desc(schema.checkpoints.createdAt));
+
+      return results.map((r: any) => ({
+        id: r.id,
+        taskId: r.taskId,
+        attemptId: r.attemptId,
+        sessionId: r.sessionId,
+        gitCommitHash: r.gitCommitHash,
+        messageCount: r.messageCount,
+        summary: r.summary,
+        createdAt: r.createdAt,
+        attempt: {
+          displayPrompt: r.attemptDisplayPrompt,
+          prompt: r.attemptPrompt,
+        },
+      }));
     },
 
     async create(data: {
@@ -53,6 +89,7 @@ export function createCheckpointService(db: any) {
       return checkpoint;
     },
 
+    /** Bulk-create checkpoints for a specific task from an explicit array */
     async backfill(taskId: string, items: Array<{
       attemptId: string;
       sessionId: string;
@@ -75,6 +112,69 @@ export function createCheckpointService(db: any) {
         await db.insert(schema.checkpoints).values(rows);
       }
       return rows;
+    },
+
+    /** Auto-backfill: create checkpoints for all completed attempts that don't have one yet */
+    async backfillFromCompleted() {
+      const completedAttempts = await db.select().from(schema.attempts)
+        .where(eq(schema.attempts.status, 'completed'))
+        .all();
+
+      let created = 0;
+      let skipped = 0;
+
+      for (const attempt of completedAttempts) {
+        if (!attempt.sessionId) {
+          skipped++;
+          continue;
+        }
+
+        const existing = await db.select().from(schema.checkpoints)
+          .where(eq(schema.checkpoints.attemptId, attempt.id))
+          .limit(1);
+
+        if (existing.length > 0) {
+          skipped++;
+          continue;
+        }
+
+        const logs = await db.select().from(schema.attemptLogs)
+          .where(eq(schema.attemptLogs.attemptId, attempt.id))
+          .all();
+
+        let summary = '';
+        for (let i = logs.length - 1; i >= 0; i--) {
+          if (logs[i].type === 'json') {
+            try {
+              const data = JSON.parse(logs[i].content);
+              if (data.type === 'assistant' && data.message?.content) {
+                const text = data.message.content
+                  .filter((b: { type: string }) => b.type === 'text')
+                  .map((b: { text: string }) => b.text)
+                  .join(' ');
+                summary = text.substring(0, 100) + (text.length > 100 ? '...' : '');
+                break;
+              }
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+
+        await db.insert(schema.checkpoints).values({
+          id: generateId('chkpt'),
+          taskId: attempt.taskId,
+          attemptId: attempt.id,
+          sessionId: attempt.sessionId,
+          messageCount: logs.filter((l: any) => l.type === 'json').length,
+          summary,
+          createdAt: attempt.completedAt || attempt.createdAt,
+        });
+
+        created++;
+      }
+
+      return { created, skipped, total: completedAttempts.length };
     },
   };
 }
