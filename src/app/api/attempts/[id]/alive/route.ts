@@ -1,30 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { agentManager } from '@/lib/agent-manager';
+import { NextRequest } from 'next/server';
+import { proxyToSdk } from '@/lib/sdk-proxy-to-agentic-backend';
 
-// GET /api/attempts/[id]/alive - Check if an attempt has an active agent process
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
+export async function GET(req: NextRequest) { return proxyToSdk(req, 'GET'); }
 
-    // Check if this attempt has an active agent or pending question
-    const hasAgent = agentManager.isRunning(id);
-    const hasPendingQuestion = agentManager.hasPendingQuestion(id);
-    const isAlive = hasAgent || hasPendingQuestion;
-
-    return NextResponse.json({
-      attemptId: id,
-      alive: isAlive,
-      hasAgent,
-      hasPendingQuestion
-    });
-  } catch (error) {
-    console.error('Error checking attempt status:', error);
-    return NextResponse.json(
-      { error: 'Failed to check attempt status' },
-      { status: 500 }
-    );
-  }
-}
