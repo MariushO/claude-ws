@@ -100,9 +100,39 @@ export class ClaudeCLIProvider extends EventEmitter implements Provider {
 
     this.emit('message', { attemptId, ...parsed.messagePayload });
 
+    // Track active background agents from system events
+    const rawMessage = parsed.messagePayload.rawMessage as Record<string, unknown>;
+    if (rawMessage.type === 'system' && (rawMessage as { subtype?: string }).subtype === 'task_started') {
+      session.activeBackgroundAgents = (session.activeBackgroundAgents || 0) + 1;
+      log.info({ attemptId, active: session.activeBackgroundAgents }, 'Background agent started');
+    }
+    if (rawMessage.type === 'system' && (rawMessage as { subtype?: string }).subtype === 'task_notification') {
+      session.activeBackgroundAgents = Math.max(0, (session.activeBackgroundAgents || 0) - 1);
+      log.info({ attemptId, active: session.activeBackgroundAgents }, 'Background agent notification received');
+    }
+
+    // Close stdin on result message so CLI process can exit naturally
+    // If background agents are active, delay close to allow their results to arrive
     if (parsed.isResultMessage) {
-      log.info({ attemptId }, 'Result message received, closing stdin');
-      session.child.stdin?.end();
+      const activeAgents = session.activeBackgroundAgents || 0;
+      if (activeAgents > 0) {
+        log.info({ attemptId, activeAgents }, 'Result received but background agents still active, delaying stdin close');
+        const maxWait = 60000;
+        const checkInterval = 2000;
+        let waited = 0;
+        const waitTimer = setInterval(() => {
+          waited += checkInterval;
+          const remaining = session.activeBackgroundAgents || 0;
+          if (remaining <= 0 || waited >= maxWait) {
+            clearInterval(waitTimer);
+            log.info({ attemptId, waited, remaining }, 'Closing stdin (background agents done or timeout)');
+            session.child.stdin?.end();
+          }
+        }, checkInterval);
+      } else {
+        log.info({ attemptId }, 'Result message received, closing stdin');
+        session.child.stdin?.end();
+      }
     }
   }
 

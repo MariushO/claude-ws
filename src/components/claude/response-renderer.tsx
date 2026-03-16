@@ -72,6 +72,7 @@ export function ResponseRenderer({ messages, className }: ResponseRendererProps)
         <ToolUseBlock
           key={index}
           name={block.name || 'Unknown'}
+          id={block.id}
           input={block.input}
         />
       );
@@ -103,6 +104,7 @@ export function ResponseRenderer({ messages, className }: ResponseRendererProps)
         <ToolUseBlock
           key={index}
           name={output.tool_name}
+          id={output.id}
           input={output.tool_data}
         />
       );
@@ -114,6 +116,7 @@ export function ResponseRenderer({ messages, className }: ResponseRendererProps)
         <ToolUseBlock
           key={index}
           name={output.tool_name || 'Tool'}
+          id={output.tool_data?.tool_use_id as string | undefined}
           result={output.result}
           isError={output.is_error}
         />

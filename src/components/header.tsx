@@ -206,7 +206,7 @@ export function Header({ onCreateTask, onAddProject, searchQuery: externalSearch
               </TooltipTrigger>
               <TooltipContent>
                 <p>
-                  Agent workflow{activeAgentCount > 0 ? ` (${activeAgentCount})` : ''}
+                  Agent team{activeAgentCount > 0 ? ` (${activeAgentCount})` : ''}
                 </p>
               </TooltipContent>
             </Tooltip>
@@ -247,7 +247,7 @@ export function Header({ onCreateTask, onAddProject, searchQuery: externalSearch
               <ProjectSelectorContent onAddProject={onAddProject} />
               <DropdownMenuItem onClick={toggleWorkflowPanel}>
                 <Network className="h-4 w-4 mr-2" />
-                Agent workflow
+                Agent team
                 {activeAgentCount > 0 && (
                   <span className="ml-auto text-xs bg-blue-500 text-white rounded-full h-5 min-w-5 px-1.5 flex items-center justify-center">
                     {activeAgentCount}

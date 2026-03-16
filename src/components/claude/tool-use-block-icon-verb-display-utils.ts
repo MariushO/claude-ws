@@ -25,6 +25,8 @@ export function getToolIcon(name: string) {
     WebFetch: Globe,
     WebSearch: Globe,
     Skill: Zap,
+    Task: Zap,
+    Agent: Zap,
   };
   return icons[name] || FileText;
 }
@@ -43,6 +45,7 @@ export function getToolActiveVerb(name: string): string {
     WebSearch: 'Searching web',
     Skill: 'Executing',
     Task: 'Delegating',
+    Agent: 'Delegating',
     AskUserQuestion: 'Waiting for',
   };
   return verbs[name] || 'Processing';
@@ -85,6 +88,7 @@ export function getToolDisplay(name: string, input: any): string {
     case 'WebSearch':
       return `"${input.query || ''}"`;
     case 'Task':
+    case 'Agent':
       return input.description || 'task...';
     default:
       return name;
@@ -110,7 +114,8 @@ export function getResultSummary(name: string, result?: string): string | null {
       if (files === 0) return 'no files';
       return `${files} file${files !== 1 ? 's' : ''}`;
     }
-    case 'Task': {
+    case 'Task':
+    case 'Agent': {
       if (result.includes('completed')) return 'completed';
       return null;
     }

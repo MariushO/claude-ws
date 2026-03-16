@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { SubagentNode, AgentMessage, WorkflowSummary } from '@/lib/workflow-tracker';
+import type { SubagentNode, AgentMessage, TrackedTask, WorkflowSummary } from '@/lib/workflow-tracker';
 
 export interface WorkflowEntry {
   attemptId: string;
@@ -7,12 +7,16 @@ export interface WorkflowEntry {
   taskTitle: string;
   nodes: SubagentNode[];
   messages: AgentMessage[];
+  tasks: TrackedTask[];
+  mode?: 'subagent' | 'agent-team';
   summary: WorkflowSummary;
 }
 
 interface WorkflowStore {
   isOpen: boolean;
   workflows: Map<string, WorkflowEntry>;
+  selectedAgentId: string | null;
+  activeTab: 'chat' | 'agent' | 'tasks';
   togglePanel: () => void;
   openPanel: () => void;
   closePanel: () => void;
@@ -20,11 +24,16 @@ interface WorkflowStore {
   removeWorkflow: (attemptId: string) => void;
   getActiveAgentCount: () => number;
   getByTaskId: (taskId: string) => WorkflowEntry | undefined;
+  selectAgent: (id: string | null) => void;
+  setActiveTab: (tab: 'chat' | 'agent' | 'tasks') => void;
+  clearHistory: (attemptId: string) => void;
 }
 
 export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
   isOpen: false,
   workflows: new Map<string, WorkflowEntry>(),
+  selectedAgentId: null,
+  activeTab: 'chat',
 
   togglePanel: () => set((state) => ({ isOpen: !state.isOpen })),
   openPanel: () => set({ isOpen: true }),
@@ -40,6 +49,8 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
         taskTitle: data.taskTitle || existing?.taskTitle || '',
         nodes: data.nodes || existing?.nodes || [],
         messages: data.messages || existing?.messages || [],
+        tasks: data.tasks || existing?.tasks || [],
+        mode: data.mode || existing?.mode,
         summary: data.summary || existing?.summary || { chain: [], completedCount: 0, activeCount: 0, totalCount: 0 },
       });
       return { workflows: newMap };
@@ -67,5 +78,17 @@ export const useWorkflowStore = create<WorkflowStore>((set, get) => ({
       if (entry.taskId === taskId) return entry;
     }
     return undefined;
+  },
+
+  selectAgent: (id) => set({ selectedAgentId: id, activeTab: id ? 'agent' : 'chat' }),
+
+  setActiveTab: (tab) => set({ activeTab: tab }),
+
+  clearHistory: (attemptId) => {
+    set((state) => {
+      const newMap = new Map(state.workflows);
+      newMap.delete(attemptId);
+      return { workflows: newMap };
+    });
   },
 }));

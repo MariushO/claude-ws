@@ -150,6 +150,7 @@ export function createTaskQueryMethods(db: any) {
       let contextLimit = latestAttempt?.contextLimit || 200000;
       let contextPercentage = latestAttempt?.contextPercentage || 0;
 
+      // Fallback to previous attempt if current is running with no context data yet
       if (latestAttempt?.status === 'running' && contextPercentage === 0 && attempts.length > 1) {
         const prev = attempts[1];
         if (prev?.contextPercentage && prev.contextPercentage > 0) {

@@ -6,8 +6,9 @@
  */
 
 import { EventEmitter } from 'events';
-import type { SDKResultMessage } from './sdk-event-adapter';
+import type { SDKResultMessage, UsageEvent } from './sdk-event-adapter';
 import type { ContextHealth } from './context-health';
+import { calculateContextHealth } from './context-health';
 import { calculateContextTokens } from './usage-context-token-calculator';
 
 import { createLogger } from './logger';
@@ -175,6 +176,58 @@ class UsageTracker extends EventEmitter {
           stats.contextLimit = ms.contextWindow;
         }
       }
+    }
+
+    stats.lastUpdatedAt = Date.now();
+    this.emit('usage-update', { attemptId, usage: stats });
+  }
+
+  /**
+   * Track per-turn usage from message_start/message_delta stream events.
+   *
+   * The Anthropic API emits usage on every API response:
+   * - message_start: input_tokens, cache_read, cache_creation (full input context at this turn)
+   * - message_delta: output_tokens (output for this turn)
+   *
+   * input_tokens + cache_read + cache_creation = total input context for this API call
+   * (includes system prompt, tool definitions, full conversation history, tool results)
+   *
+   * This gives us accurate, real-time context tracking without estimation.
+   */
+  trackUsageEvent(attemptId: string, usage: UsageEvent): void {
+    const stats = this.initSession(attemptId);
+
+    const inputContext = (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
+    const outputTokens = usage.output_tokens || 0;
+
+    // Track baseline from first message_start (before any output)
+    if (stats.baselineContext === 0 && inputContext > 0) {
+      stats.baselineContext = inputContext;
+      log.info({ attemptId, baseline: inputContext }, 'Context baseline set from first usage event');
+    }
+
+    // Context used = input context + output tokens for this API call
+    // This is the actual context window usage at this point in the conversation
+    if (inputContext > 0) {
+      stats.contextUsed = inputContext + outputTokens;
+      stats.contextPercentage = (stats.contextUsed / stats.contextLimit) * 100;
+
+      stats.contextHealth = calculateContextHealth(
+        inputContext,
+        outputTokens,
+        stats.contextLimit
+      );
+
+      log.debug({
+        attemptId,
+        contextUsed: stats.contextUsed,
+        contextLimit: stats.contextLimit,
+        contextPct: stats.contextPercentage.toFixed(1),
+        input: usage.input_tokens,
+        cacheRead: usage.cache_read_input_tokens,
+        cacheCreate: usage.cache_creation_input_tokens,
+        output: outputTokens,
+      }, 'Context updated from stream usage event');
     }
 
     stats.lastUpdatedAt = Date.now();

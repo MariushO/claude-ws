@@ -1477,6 +1477,8 @@ app.prepare().then(async () => {
         attemptId,
         nodes: expanded.nodes,
         messages: expanded.messages,
+        tasks: expanded.tasks,
+        mode: expanded.mode,
         summary: expanded.summary,
       });
 
@@ -1513,6 +1515,7 @@ app.prepare().then(async () => {
         teamName: node.teamName || null,
         status: 'in_progress',
         depth: node.depth,
+        prompt: node.prompt || null,
         startedAt: node.startedAt || Date.now(),
       });
     } catch (err) {
@@ -1530,10 +1533,69 @@ app.prepare().then(async () => {
           completedAt: node.completedAt || Date.now(),
           durationMs: node.durationMs || null,
           error: node.error || null,
+          resultPreview: node.resultPreview || null,
+          resultFull: node.resultFull || null,
         })
         .where(eq(schema.subagents.id, node.id));
     } catch (err) {
       log.error({ err, attemptId, nodeId: node.id }, '[Server] Failed to persist subagent end');
+    }
+  });
+
+  // Persist tracked task events to DB
+  workflowTracker.on('workflow-update', async ({ attemptId, workflow }) => {
+    if (!workflow?.tasks?.length) return;
+    try {
+      for (const task of workflow.tasks) {
+        await db.insert(schema.trackedTasks)
+          .values({
+            id: task.id,
+            attemptId,
+            subject: task.subject,
+            description: task.description || null,
+            status: task.status,
+            owner: task.owner || null,
+            activeForm: task.activeForm || null,
+            updatedAt: task.updatedAt,
+          })
+          .onConflictDoUpdate({
+            target: schema.trackedTasks.id,
+            set: {
+              status: task.status,
+              owner: task.owner || null,
+              activeForm: task.activeForm || null,
+              updatedAt: task.updatedAt,
+            },
+          });
+      }
+    } catch (err) {
+      log.error({ err, attemptId }, '[Server] Failed to persist tracked tasks');
+    }
+  });
+
+  // Persist inter-agent messages to DB
+  const persistedMessageTimestamps = new Set<string>();
+  workflowTracker.on('workflow-update', async ({ attemptId, workflow }) => {
+    if (!workflow?.messages?.length) return;
+    try {
+      for (const msg of workflow.messages) {
+        // Deduplicate by attemptId + timestamp
+        const key = `${attemptId}:${msg.timestamp}`;
+        if (persistedMessageTimestamps.has(key)) continue;
+        persistedMessageTimestamps.add(key);
+        await db.insert(schema.agentMessages).values({
+          attemptId,
+          fromAgent: msg.fromAgent || null,
+          fromType: msg.fromType,
+          toType: msg.toType,
+          content: msg.content,
+          summary: msg.summary || null,
+          isBroadcast: msg.isBroadcast || false,
+          timestamp: msg.timestamp,
+        });
+      }
+    } catch (err) {
+      log.error({ err, attemptId }, '[Server] Failed to persist agent messages');
     }
   });
 

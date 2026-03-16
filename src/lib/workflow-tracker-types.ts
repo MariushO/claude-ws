@@ -21,6 +21,9 @@ export interface SubagentNode {
   completedAt?: number;
   durationMs?: number;
   error?: string;
+  prompt?: string;      // description/prompt from Task tool input
+  resultPreview?: string; // first ~200 chars of tool_result
+  resultFull?: string;  // full tool_result content
 }
 
 /** Inter-agent message */
@@ -30,6 +33,19 @@ export interface AgentMessage {
   content: string;
   summary: string;
   timestamp: number;
+  fromAgent?: string;   // best-effort inferred agent name
+  isBroadcast?: boolean; // true for broadcast messages
+}
+
+/** Tracked task from TaskCreate/TaskUpdate tool calls */
+export interface TrackedTask {
+  id: string;
+  subject: string;
+  description?: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'deleted';
+  owner?: string;
+  activeForm?: string;
+  updatedAt: number;
 }
 
 /** Workflow state for an attempt */
@@ -42,6 +58,8 @@ export interface WorkflowState {
   failedNodes: string[];
   messages: AgentMessage[];
   teams: string[];
+  tasks: TrackedTask[];
+  mode: 'subagent' | 'agent-team';
 }
 
 /** Workflow summary for status line and global events */

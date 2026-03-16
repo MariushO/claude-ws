@@ -8,7 +8,7 @@
 
 import { EventEmitter } from 'events';
 import type { ClaudeOutput } from '../../types';
-import type { BackgroundShellInfo, SDKResultMessage } from '../sdk-event-adapter';
+import type { BackgroundShellInfo, SDKResultMessage, UsageEvent } from '../sdk-event-adapter';
 
 export type ProviderId = 'claude-sdk' | 'claude-cli';
 
@@ -44,6 +44,7 @@ export interface ProviderEventData {
     checkpointUuid?: string;
     backgroundShell?: BackgroundShellInfo;
     resultMessage?: SDKResultMessage;
+    usageEvent?: UsageEvent;
     rawMessage?: unknown;
   };
   question: {

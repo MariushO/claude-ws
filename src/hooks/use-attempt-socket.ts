@@ -7,8 +7,10 @@ import { useRunningTasksStore } from '@/stores/running-tasks-store';
 import { useQuestionsStore } from '@/stores/questions-store';
 import { useWorkflowStore } from '@/stores/workflow-store';
 import { createLogger } from '@/lib/logger';
+import { toast } from '@/hooks/use-toast';
 import type { ActiveQuestion } from '@/hooks/use-attempt-questions';
 import { registerOutputHandler } from '@/hooks/use-attempt-socket-output-handler';
+import type { SubagentNode, AgentMessage, TrackedTask } from '@/lib/workflow-tracker';
 
 const log = createLogger('AttemptSocketHook');
 
@@ -135,12 +137,33 @@ export function useAttemptSocket({
       useQuestionsStore.getState().removeQuestion(data.attemptId);
     });
 
-    socketInstance.on('status:workflow', (data: { attemptId: string; nodes: unknown[]; messages: unknown[]; summary: { chain: string[]; completedCount: number; activeCount: number; totalCount: number } }) => {
-      useWorkflowStore.getState().updateWorkflow(data.attemptId, {
-        nodes: data.nodes as any,
-        messages: data.messages as any,
+    socketInstance.on('status:workflow', (data: { attemptId: string; nodes: unknown[]; messages: unknown[]; tasks?: unknown[]; mode?: 'subagent' | 'agent-team'; summary: { chain: string[]; completedCount: number; activeCount: number; totalCount: number } }) => {
+      const store = useWorkflowStore.getState();
+      const previousEntry = store.workflows.get(data.attemptId);
+      const previousNodes = previousEntry?.nodes || [];
+      const newNodes = data.nodes as SubagentNode[];
+
+      store.updateWorkflow(data.attemptId, {
+        nodes: newNodes,
+        messages: data.messages as AgentMessage[],
+        tasks: (data.tasks || []) as TrackedTask[],
+        mode: data.mode,
         summary: data.summary,
       });
+
+      // Toast notifications for newly failed agents
+      for (const node of newNodes) {
+        if (node.status === 'failed') {
+          const prev = previousNodes.find((n: SubagentNode) => n.id === node.id);
+          if (!prev || prev.status !== 'failed') {
+            toast({
+              title: `Agent failed: ${node.name || node.type}`,
+              description: node.error?.slice(0, 100) || 'Unknown error',
+              variant: 'destructive',
+            });
+          }
+        }
+      }
     });
 
     socketInstance.on('workflow:update', (data: { attemptId: string; taskId: string; taskTitle: string; summary: { chain: string[]; completedCount: number; activeCount: number; totalCount: number } }) => {
@@ -149,14 +172,7 @@ export function useAttemptSocket({
         taskTitle: data.taskTitle,
         summary: data.summary,
       });
-      if (data.summary.activeCount === 0 && data.summary.totalCount > 0) {
-        setTimeout(() => {
-          const entry = useWorkflowStore.getState().workflows.get(data.attemptId);
-          if (entry && entry.summary.activeCount === 0) {
-            useWorkflowStore.getState().removeWorkflow(data.attemptId);
-          }
-        }, 30000);
-      }
+      // Don't auto-remove — user can clear manually via the trash button in TeamView
     });
 
     socketInstance.on('output:stderr', (data: { attemptId: string; content: string }) => {

@@ -13,11 +13,21 @@ export function createAttemptWorkflowService(db: any) {
         where: eq(schema.subagents.attemptId, attemptId),
       });
 
-      if (subagents.length === 0) {
+      const tasks = await db.query.trackedTasks.findMany({
+        where: eq(schema.trackedTasks.attemptId, attemptId),
+      });
+
+      const messages = await db.query.agentMessages.findMany({
+        where: eq(schema.agentMessages.attemptId, attemptId),
+      });
+
+      if (subagents.length === 0 && tasks.length === 0 && messages.length === 0) {
         return {
           source: 'db' as const,
           nodes: [],
           messages: [],
+          tasks: [],
+          mode: 'subagent' as const,
           summary: { chain: [] as string[], completedCount: 0, activeCount: 0, totalCount: 0 },
         };
       }
@@ -44,14 +54,54 @@ export function createAttemptWorkflowService(db: any) {
           completedAt: s.completedAt,
           durationMs: s.durationMs,
           error: s.error,
+          prompt: s.prompt,
+          resultPreview: s.resultPreview,
+          resultFull: s.resultFull,
         }));
+
+      const messageList = messages
+        .sort((a: any, b: any) => (a.timestamp || 0) - (b.timestamp || 0))
+        .map((m: any) => ({
+          fromAgent: m.fromAgent,
+          fromType: m.fromType,
+          toType: m.toType,
+          content: m.content,
+          summary: m.summary,
+          isBroadcast: m.isBroadcast,
+          timestamp: m.timestamp,
+        }));
+
+      const trackedTasksList = tasks
+        .sort((a: any, b: any) => (a.createdAt || 0) - (b.createdAt || 0))
+        .map((t: any) => ({
+          id: t.id,
+          subject: t.subject,
+          description: t.description,
+          status: t.status,
+          owner: t.owner,
+          activeForm: t.activeForm,
+          updatedAt: t.updatedAt,
+        }));
+
+      // Detect mode: if any agent has a teamName, it's an agent-team
+      const hasTeam = subagents.some((s: any) => s.teamName);
+      const mode: 'subagent' | 'agent-team' = hasTeam ? 'agent-team' : 'subagent';
 
       return {
         source: 'db' as const,
         nodes,
-        messages: [],
+        messages: messageList,
+        tasks: trackedTasksList,
+        mode,
         summary: { chain, completedCount, activeCount, totalCount: subagents.length },
       };
+    },
+
+    /** Delete all agent session data for an attempt */
+    async deleteWorkflowData(attemptId: string) {
+      await db.delete(schema.subagents).where(eq(schema.subagents.attemptId, attemptId));
+      await db.delete(schema.trackedTasks).where(eq(schema.trackedTasks.attemptId, attemptId));
+      await db.delete(schema.agentMessages).where(eq(schema.agentMessages.attemptId, attemptId));
     },
   };
 }

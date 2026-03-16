@@ -7,7 +7,7 @@
  */
 
 import type { ClaudeOutput } from '../types';
-import type { BackgroundShellInfo, SDKResultMessage } from '@/lib/sdk-event-adapter';
+import type { BackgroundShellInfo, SDKResultMessage, UsageEvent } from '@/lib/sdk-event-adapter';
 import { sessionManager } from '@/lib/session-manager';
 import { checkpointManager } from '@/lib/checkpoint-manager';
 import { usageTracker } from '@/lib/usage-tracker';
@@ -59,6 +59,7 @@ export function wireProviderEvents(
     checkpointUuid?: string;
     backgroundShell?: BackgroundShellInfo;
     resultMessage?: SDKResultMessage;
+    usageEvent?: UsageEvent;
     rawMessage?: unknown;
   }) => {
     if (data.attemptId !== attemptId) return;
@@ -78,6 +79,10 @@ export function wireProviderEvents(
 
     if (data.resultMessage) {
       usageTracker.trackResult(attemptId, data.resultMessage);
+    }
+
+    if (data.usageEvent) {
+      usageTracker.trackUsageEvent(attemptId, data.usageEvent);
     }
 
     if (data.backgroundShell) {
@@ -143,4 +148,3 @@ export function wireProviderEvents(
 
   return cleanup;
 }
-

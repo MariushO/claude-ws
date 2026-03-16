@@ -64,6 +64,20 @@ export interface SDKStreamEvent {
       text?: string;
       thinking?: string;
     };
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      cache_read_input_tokens?: number;
+      cache_creation_input_tokens?: number;
+    };
+    message?: {
+      usage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+        cache_read_input_tokens?: number;
+        cache_creation_input_tokens?: number;
+      };
+    };
   };
 }
 
@@ -92,12 +106,20 @@ export interface ClaudeOutput {
   [key: string]: unknown;
 }
 
+export interface UsageEvent {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_input_tokens: number;
+  cache_creation_input_tokens: number;
+}
+
 export interface AdaptedMessage {
   output: ClaudeOutput;
   sessionId?: string;
   checkpointUuid?: string;
   askUserQuestion?: { toolUseId: string; questions: unknown[] };
   backgroundShell?: BackgroundShellInfo;
+  usageEvent?: UsageEvent;
 }
 
 // --- Type guard ---
@@ -201,6 +223,24 @@ export function adaptSDKMessage(message: SDKMessage): AdaptedMessage {
         } else if (event.delta.type === 'thinking_delta' && event.delta.thinking) {
           result.output = { type: 'content_block_delta', index: event.index, delta: { type: 'thinking_delta', thinking: event.delta.thinking } };
         }
+      }
+      // Capture usage from message_delta events (per-turn token counts from the API)
+      if (event.type === 'message_delta' && event.usage) {
+        result.usageEvent = {
+          input_tokens: event.usage.input_tokens || 0,
+          output_tokens: event.usage.output_tokens || 0,
+          cache_read_input_tokens: event.usage.cache_read_input_tokens || 0,
+          cache_creation_input_tokens: event.usage.cache_creation_input_tokens || 0,
+        };
+      }
+      // Capture usage from message_start events (initial context size)
+      if (event.type === 'message_start' && event.message?.usage) {
+        result.usageEvent = {
+          input_tokens: event.message.usage.input_tokens || 0,
+          output_tokens: event.message.usage.output_tokens || 0,
+          cache_read_input_tokens: event.message.usage.cache_read_input_tokens || 0,
+          cache_creation_input_tokens: event.message.usage.cache_creation_input_tokens || 0,
+        };
       }
       break;
     }

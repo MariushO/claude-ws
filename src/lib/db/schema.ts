@@ -15,6 +15,8 @@ export {
   pluginDependencyCache,
   shells,
   subagents,
+  trackedTasks,
+  agentMessages,
   appSettings,
   type Project,
   type NewProject,

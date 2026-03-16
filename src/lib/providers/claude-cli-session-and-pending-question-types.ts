@@ -27,6 +27,7 @@ export class CLISession implements ProviderSession {
   sessionId: string | undefined;
   outputFormat?: string;
   child: ChildProcess;
+  activeBackgroundAgents: number = 0;
   private pendingQuestion: PendingQuestion | null = null;
 
   constructor(

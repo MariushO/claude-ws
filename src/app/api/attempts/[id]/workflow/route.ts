@@ -25,6 +25,8 @@ export async function GET(
       source: 'live',
       nodes: expanded.nodes,
       messages: expanded.messages,
+      tasks: expanded.tasks,
+      mode: expanded.mode,
       summary: expanded.summary,
     });
   }
@@ -32,4 +34,24 @@ export async function GET(
   // Fall back to DB (for completed attempts)
   const result = await workflowService.getWorkflowFromDb(attemptId);
   return NextResponse.json(result);
+}
+
+/**
+ * DELETE /api/attempts/[id]/workflow
+ *
+ * Clears all agent session data (subagents, tasks, messages) for an attempt.
+ */
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: attemptId } = await params;
+
+  // Clear in-memory state
+  workflowTracker.clearWorkflow(attemptId);
+
+  // Clear DB state
+  await workflowService.deleteWorkflowData(attemptId);
+
+  return NextResponse.json({ deleted: true, attemptId });
 }

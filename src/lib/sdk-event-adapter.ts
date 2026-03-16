@@ -19,6 +19,7 @@ export type {
   SDKStreamEvent,
   SDKContentBlock,
   SDKMessage,
+  UsageEvent,
 } from '@agentic-sdk/agent/claude-sdk-message-to-output-adapter';
 
 export { isValidSDKMessage } from '@agentic-sdk/agent/claude-sdk-message-to-output-adapter';

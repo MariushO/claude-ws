@@ -12,7 +12,7 @@ import { SetupDialog } from '@/components/settings/setup-dialog';
 import { SidebarPanel, FileTabsPanel, DiffTabsPanel } from '@/components/sidebar';
 import { RightSidebar } from '@/components/right-sidebar';
 import { QuestionsPanel } from '@/components/questions/questions-panel';
-import { WorkflowPanel } from '@/components/workflow/workflow-panel';
+import { TeamView } from '@/components/team-view/team-view';
 import { PluginList } from '@/components/agent-factory/plugin-list';
 import { AccessAnywhereWizard } from '@/components/access-anywhere';
 import { TerminalPanel } from '@/components/terminal/terminal-panel';
@@ -158,7 +158,11 @@ function KanbanApp() {
         onCreateTask={() => setCreateTaskOpen(true)}
       />
       <QuestionsPanel />
-      <WorkflowPanel />
+
+      {/* Team View - agent team sidebar (replaces WorkflowPanel) */}
+      <TeamView />
+
+      {/* Access Anywhere Wizard */}
       <AccessAnywhereWizard />
       <FloatingChatWindowsContainer />
     </div>

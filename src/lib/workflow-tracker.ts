@@ -16,12 +16,13 @@ import type {
   SubagentStatus,
   SubagentNode,
   AgentMessage,
+  TrackedTask,
   WorkflowState,
   WorkflowSummary,
 } from './workflow-tracker-types';
 
 // Re-export types for consumers that import from workflow-tracker
-export type { SubagentStatus, SubagentNode, AgentMessage, WorkflowState, WorkflowSummary };
+export type { SubagentStatus, SubagentNode, AgentMessage, TrackedTask, WorkflowState, WorkflowSummary };
 
 const log = createLogger('WorkflowTracker');
 
@@ -53,6 +54,8 @@ class WorkflowTracker extends EventEmitter {
         failedNodes: [],
         messages: [],
         teams: [],
+        tasks: [],
+        mode: 'subagent',
       };
       this.workflows.set(attemptId, workflow);
     }
@@ -65,7 +68,7 @@ class WorkflowTracker extends EventEmitter {
     toolUseId: string,
     subagentType: string,
     parentToolUseId: string | null,
-    options?: { teamName?: string; name?: string }
+    options?: { teamName?: string; name?: string; prompt?: string }
   ): void {
     const workflow = this.initWorkflow(attemptId);
 
@@ -82,6 +85,7 @@ class WorkflowTracker extends EventEmitter {
       parentId: parentToolUseId,
       depth,
       teamName: options?.teamName,
+      prompt: options?.prompt,
       startedAt: Date.now(),
     };
 
@@ -98,7 +102,8 @@ class WorkflowTracker extends EventEmitter {
     attemptId: string,
     toolUseId: string,
     success: boolean,
-    error?: string
+    error?: string,
+    resultContent?: string
   ): void {
     const workflow = this.workflows.get(attemptId);
     if (!workflow) return;
@@ -110,6 +115,10 @@ class WorkflowTracker extends EventEmitter {
     node.completedAt = Date.now();
     node.durationMs = node.startedAt ? Date.now() - node.startedAt : undefined;
     if (error) node.error = error;
+    if (resultContent) {
+      node.resultPreview = resultContent.slice(0, 200);
+      node.resultFull = resultContent;
+    }
 
     workflow.activeNodes = workflow.activeNodes.filter((id) => id !== toolUseId);
     if (success) {
@@ -125,23 +134,76 @@ class WorkflowTracker extends EventEmitter {
   /** Track a TeamCreate tool use */
   trackTeamCreate(attemptId: string, teamName: string): void {
     const workflow = this.initWorkflow(attemptId);
-    if (!workflow.teams.includes(teamName)) workflow.teams.push(teamName);
+    if (!workflow.teams.includes(teamName)) {
+      workflow.teams.push(teamName);
+    }
+    workflow.mode = 'agent-team';
     this.emit('workflow-update', { attemptId, workflow });
   }
 
   /** Track a SendMessage tool use */
   trackMessage(
     attemptId: string,
-    input: { type?: string; recipient?: string; content?: string; summary?: string }
+    input: { type?: string; recipient?: string; content?: string; summary?: string; to?: string; fromAgent?: string; isBroadcast?: boolean }
   ): void {
     const workflow = this.initWorkflow(attemptId);
-    workflow.messages.push({
-      fromType: 'agent',
-      toType: input.recipient || input.type || 'unknown',
-      content: input.content || '',
+
+    const message: AgentMessage = {
+      fromType: input.fromAgent || 'agent',
+      toType: input.to || input.recipient || input.type || 'unknown',
+      content: typeof input.content === 'string' ? input.content : '',
       summary: input.summary || '',
       timestamp: Date.now(),
-    });
+      fromAgent: input.fromAgent,
+      isBroadcast: input.isBroadcast || input.to === '*',
+    };
+
+    workflow.messages.push(message);
+    this.emit('workflow-update', { attemptId, workflow });
+  }
+
+  /**
+   * Track a TaskCreate tool use
+   */
+  trackTaskCreate(
+    attemptId: string,
+    toolUseId: string,
+    input: { subject?: string; description?: string; activeForm?: string }
+  ): void {
+    const workflow = this.initWorkflow(attemptId);
+
+    const task: TrackedTask = {
+      id: toolUseId,
+      subject: input.subject || 'Untitled task',
+      description: input.description,
+      status: 'pending',
+      activeForm: input.activeForm,
+      updatedAt: Date.now(),
+    };
+
+    workflow.tasks.push(task);
+    this.emit('workflow-update', { attemptId, workflow });
+  }
+
+  /**
+   * Track a TaskUpdate tool use
+   */
+  trackTaskUpdate(
+    attemptId: string,
+    input: { taskId?: string; status?: string; owner?: string; subject?: string; activeForm?: string }
+  ): void {
+    const workflow = this.workflows.get(attemptId);
+    if (!workflow || !input.taskId) return;
+
+    const task = workflow.tasks.find((t) => t.id === input.taskId);
+    if (task) {
+      if (input.status) task.status = input.status as TrackedTask['status'];
+      if (input.owner) task.owner = input.owner;
+      if (input.subject) task.subject = input.subject;
+      if (input.activeForm) task.activeForm = input.activeForm;
+      task.updatedAt = Date.now();
+    }
+
     this.emit('workflow-update', { attemptId, workflow });
   }
 
@@ -180,6 +242,8 @@ class WorkflowTracker extends EventEmitter {
   getExpandedWorkflow(attemptId: string): {
     nodes: SubagentNode[];
     messages: AgentMessage[];
+    tasks: TrackedTask[];
+    mode: 'subagent' | 'agent-team';
     summary: WorkflowSummary;
   } | null {
     const workflow = this.workflows.get(attemptId);

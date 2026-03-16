@@ -189,6 +189,9 @@ export const subagents = sqliteTable(
       enum: ['in_progress', 'completed', 'failed', 'orphaned'],
     }).notNull(),
     error: text('error'),
+    prompt: text('prompt'),
+    resultPreview: text('result_preview'),
+    resultFull: text('result_full'),
     startedAt: integer('started_at'),
     completedAt: integer('completed_at'),
     durationMs: integer('duration_ms'),
@@ -199,6 +202,51 @@ export const subagents = sqliteTable(
   },
   (table) => [
     index('idx_subagents_attempt').on(table.attemptId),
+  ]
+);
+
+// Tracked tasks from TaskCreate/TaskUpdate tool calls within agent workflows
+export const trackedTasks = sqliteTable(
+  'tracked_tasks',
+  {
+    id: text('id').primaryKey(),
+    attemptId: text('attempt_id').notNull(),
+    subject: text('subject').notNull(),
+    description: text('description'),
+    status: text('status', {
+      enum: ['pending', 'in_progress', 'completed', 'deleted'],
+    }).notNull().default('pending'),
+    owner: text('owner'),
+    activeForm: text('active_form'),
+    updatedAt: integer('updated_at', { mode: 'number' }).notNull(),
+    createdAt: integer('created_at', { mode: 'number' })
+      .notNull()
+      .$defaultFn(() => Date.now()),
+  },
+  (table) => [
+    index('idx_tracked_tasks_attempt').on(table.attemptId),
+  ]
+);
+
+// Inter-agent messages from SendMessage tool calls
+export const agentMessages = sqliteTable(
+  'agent_messages',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    attemptId: text('attempt_id').notNull(),
+    fromAgent: text('from_agent'),
+    fromType: text('from_type').notNull(),
+    toType: text('to_type').notNull(),
+    content: text('content').notNull(),
+    summary: text('summary'),
+    isBroadcast: integer('is_broadcast', { mode: 'boolean' }).notNull().default(false),
+    timestamp: integer('timestamp', { mode: 'number' }).notNull(),
+    createdAt: integer('created_at', { mode: 'number' })
+      .notNull()
+      .$defaultFn(() => Date.now()),
+  },
+  (table) => [
+    index('idx_agent_messages_attempt').on(table.attemptId),
   ]
 );
 
@@ -329,5 +377,9 @@ export type Shell = typeof shells.$inferSelect;
 export type NewShell = typeof shells.$inferInsert;
 export type Subagent = typeof subagents.$inferSelect;
 export type NewSubagent = typeof subagents.$inferInsert;
+export type TrackedTaskRecord = typeof trackedTasks.$inferSelect;
+export type NewTrackedTaskRecord = typeof trackedTasks.$inferInsert;
+export type AgentMessageRecord = typeof agentMessages.$inferSelect;
+export type NewAgentMessageRecord = typeof agentMessages.$inferInsert;
 export type AppSetting = typeof appSettings.$inferSelect;
 export type NewAppSetting = typeof appSettings.$inferInsert;

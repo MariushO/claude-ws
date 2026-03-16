@@ -5,7 +5,7 @@
  * and expanded workflow data from a WorkflowState without mutating it.
  */
 
-import type { WorkflowState, SubagentNode, AgentMessage, WorkflowSummary } from './workflow-tracker-types';
+import type { WorkflowState, SubagentNode, AgentMessage, TrackedTask, WorkflowSummary } from './workflow-tracker-types';
 
 /**
  * Build a WorkflowSummary from a WorkflowState (chain of root agent names + counts).
@@ -40,11 +40,15 @@ export function buildWorkflowTree(workflow: WorkflowState): SubagentNode[] {
 export function buildExpandedWorkflow(workflow: WorkflowState): {
   nodes: SubagentNode[];
   messages: AgentMessage[];
+  tasks: TrackedTask[];
+  mode: 'subagent' | 'agent-team';
   summary: WorkflowSummary;
 } {
   return {
     nodes: buildWorkflowTree(workflow),
     messages: workflow.messages,
+    tasks: workflow.tasks,
+    mode: workflow.mode,
     summary: buildWorkflowSummary(workflow),
   };
 }
