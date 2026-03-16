@@ -44,4 +44,4 @@ export {
   type NewSubagent,
   type AppSetting,
   type NewAppSetting,
-} from '@agentic-sdk/db/database-schema';
+} from '../../../packages/agentic-sdk/src/db/database-schema';
