@@ -1,4 +1,4 @@
 /**
  * Re-export from agentic-sdk shared module.
  */
-export { safeCompare } from '@agentic-sdk/lib/timing-safe-compare';
+export { safeCompare } from '../../packages/agentic-sdk/src/lib/timing-safe-compare';

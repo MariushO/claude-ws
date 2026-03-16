@@ -11,4 +11,4 @@ export {
   isValidModelId,
   modelIdToDisplayName,
   getModelShortName,
-} from '@agentic-sdk/lib/claude-available-models';
+} from '../../packages/agentic-sdk/src/lib/claude-available-models';
