@@ -1,6 +1,13 @@
 # Development
-.next/
 node_modules/
+
+# .next build artifacts - ship production build, exclude dev/cache
+.next/cache/
+.next/dev/
+.next/trace/
+.next/trace-build/
+.next/turbopack/
+.next/diagnostics/
 .plans/
 plans/
 docs/
