@@ -1,6 +1,6 @@
 {
   "name": "claude-ws",
-  "version": "0.3.109",
+  "version": "0.3.110",
   "private": false,
   "description": "A beautifully crafted workspace interface for Claude Code with real-time streaming and local SQLite database",
   "keywords": [
@@ -77,7 +77,7 @@
     ]
   },
   "scripts": {
-    "postinstall": "node -e \"try{require('fs').chmodSync(require('path').join('node_modules','@homebridge','node-pty-prebuilt-multiarch','prebuilds',process.platform+'-'+process.arch,'spawn-helper'),0o755)}catch{}\"",
+    "postinstall": "node scripts/postinstall-optional-native-deps.js",
     "dev": "cross-env CLAUDECODE= tsx server.ts",
     "build": "cross-env NODE_ENV=production next build",
     "start": "cross-env NODE_ENV=production CLAUDECODE= tsx server.ts",
