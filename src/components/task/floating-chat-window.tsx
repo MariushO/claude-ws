@@ -58,15 +58,16 @@ export function FloatingChatWindow({ task, zIndex, onClose, onMaximize, onFocus 
   );
 
   // Restore pending file attachments from DB when task has pendingFileIds
+  // Only restore if task hasn't started yet (chatInit=false) to avoid re-inserting files on reopen
   const { restoreFromDb } = useAttachmentStore();
   useEffect(() => {
-    if (task.pendingFileIds) {
+    if (task.pendingFileIds && !task.chatInit) {
       try {
         const ids = JSON.parse(task.pendingFileIds) as string[];
         if (ids.length > 0) restoreFromDb(task.id, ids);
       } catch { /* ignore */ }
     }
-  }, [task.id, task.pendingFileIds, restoreFromDb]);
+  }, [task.id, task.pendingFileIds, task.chatInit, restoreFromDb]);
 
   const currentProjectId = activeProjectId || selectedProjectIds[0] || task.projectId;
   const currentProjectPath = currentProjectId ? projects.find(p => p.id === currentProjectId)?.path : undefined;

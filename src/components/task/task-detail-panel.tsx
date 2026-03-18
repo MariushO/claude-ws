@@ -75,15 +75,16 @@ export function TaskDetailPanel({ className }: TaskDetailPanelProps) {
   );
 
   // Restore pending file attachments from DB when task has pendingFileIds
+  // Only restore if task hasn't started yet (chatInit=false) to avoid re-inserting files on reopen
   const { restoreFromDb } = useAttachmentStore();
   useEffect(() => {
-    if (selectedTask?.pendingFileIds) {
+    if (selectedTask?.pendingFileIds && !selectedTask.chatInit) {
       try {
         const ids = JSON.parse(selectedTask.pendingFileIds) as string[];
         if (ids.length > 0) restoreFromDb(selectedTask.id, ids);
       } catch { /* ignore */ }
     }
-  }, [selectedTask?.id, selectedTask?.pendingFileIds, restoreFromDb]);
+  }, [selectedTask?.id, selectedTask?.pendingFileIds, selectedTask?.chatInit, restoreFromDb]);
 
   // Close status dropdown on outside click
   useEffect(() => {
