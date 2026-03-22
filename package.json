@@ -1,6 +1,6 @@
 {
   "name": "claude-ws",
-  "version": "0.4.0-beta.1",
+  "version": "0.4.0-beta.2",
   "private": false,
   "description": "A beautifully crafted workspace interface for Claude Code with real-time streaming and local SQLite database",
   "keywords": [
@@ -156,6 +156,7 @@
     "eslint-config-next": "^16.1.6",
     "fastify": "^5.8.2",
     "fastify-plugin": "^5.1.0",
+    "geist": "^1.7.0",
     "highlight.js": "^11.11.1",
     "js-yaml": "^4.1.1",
     "lowlight": "^3.3.0",
