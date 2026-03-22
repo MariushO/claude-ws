@@ -13,6 +13,8 @@ process.env.CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING = '1';
 process.env.CLAUDE_CODE_ENABLE_TASKS = 'true';
 
 import { EventEmitter } from 'events';
+import { readFile } from 'fs/promises';
+import { resolve, isAbsolute } from 'path';
 import type { ClaudeOutput } from '../types';
 import type { BackgroundShellInfo } from './sdk-event-adapter';
 import { getSystemPrompt } from './system-prompt';
@@ -117,12 +119,88 @@ class AgentManager extends EventEmitter {
 
     if (this.agents.has(attemptId)) return;
 
-    // Build full prompt
+    // Build full prompt — resolve @filepath mentions and file attachments
+    // into inline file content so they work in stream-json / SDK mode
     let fullPrompt = prompt;
 
+    // Collect all file paths: from filePaths param (attachments) and @mentions in prompt
+    const allFilePaths: string[] = [];
     if (filePaths && filePaths.length > 0) {
-      const fileRefs = filePaths.map(fp => `@${fp}`).join(' ');
-      fullPrompt = `${fileRefs} ${prompt}`;
+      allFilePaths.push(...filePaths);
+    }
+
+    // Extract @filepath references from the prompt text (added by buildPromptWithMentions)
+    const mentionRegex = /@([\w.\/\\-]+(?:#L\d+(?:-\d+)?)?)/g;
+    let mentionMatch;
+    const mentionPaths: { fullMatch: string; filePath: string; lineRange?: string }[] = [];
+    while ((mentionMatch = mentionRegex.exec(prompt)) !== null) {
+      const ref = mentionMatch[1];
+      const hashIdx = ref.indexOf('#');
+      const filePath = hashIdx >= 0 ? ref.substring(0, hashIdx) : ref;
+      const lineRange = hashIdx >= 0 ? ref.substring(hashIdx + 1) : undefined;
+      // Skip if it looks like an email or non-path reference
+      if (filePath.includes('.') || filePath.includes('/')) {
+        mentionPaths.push({ fullMatch: mentionMatch[0], filePath, lineRange });
+      }
+    }
+
+    // Read file contents and build context block
+    const fileContextParts: string[] = [];
+    const processedPaths = new Set<string>();
+
+    // Process file attachment paths
+    for (const fp of allFilePaths) {
+      const absPath = isAbsolute(fp) ? fp : resolve(projectPath, fp);
+      if (processedPaths.has(absPath)) continue;
+      processedPaths.add(absPath);
+      try {
+        const content = await readFile(absPath, 'utf-8');
+        fileContextParts.push(`<file path="${fp}">\n${content}\n</file>`);
+      } catch (err) {
+        log.warn({ path: absPath }, 'Could not read attached file, falling back to @reference');
+        fileContextParts.push(`@${fp}`);
+      }
+    }
+
+    // Process @mention paths from prompt text
+    for (const mention of mentionPaths) {
+      const absPath = isAbsolute(mention.filePath) ? mention.filePath : resolve(projectPath, mention.filePath);
+      if (processedPaths.has(absPath)) continue;
+      processedPaths.add(absPath);
+      try {
+        let content = await readFile(absPath, 'utf-8');
+        // If line range specified, extract those lines
+        if (mention.lineRange) {
+          const lines = content.split('\n');
+          const rangeMatch = mention.lineRange.match(/^L(\d+)(?:-(\d+))?$/);
+          if (rangeMatch) {
+            const start = Math.max(1, parseInt(rangeMatch[1])) - 1;
+            const end = rangeMatch[2] ? parseInt(rangeMatch[2]) : start + 1;
+            content = lines.slice(start, end).join('\n');
+            fileContextParts.push(`<file path="${mention.filePath}" lines="${mention.lineRange}">\n${content}\n</file>`);
+          } else {
+            fileContextParts.push(`<file path="${mention.filePath}">\n${content}\n</file>`);
+          }
+        } else {
+          fileContextParts.push(`<file path="${mention.filePath}">\n${content}\n</file>`);
+        }
+      } catch {
+        // File not found — leave the @reference as-is in the prompt
+        log.debug({ path: absPath }, 'Could not read mentioned file, keeping @reference');
+      }
+    }
+
+    // Strip resolved @mentions from prompt text and prepend file context
+    if (fileContextParts.length > 0) {
+      let cleanedPrompt = prompt;
+      // Remove @mentions that were successfully resolved
+      for (const mention of mentionPaths) {
+        const absPath = isAbsolute(mention.filePath) ? mention.filePath : resolve(projectPath, mention.filePath);
+        if (processedPaths.has(absPath)) {
+          cleanedPrompt = cleanedPrompt.replace(mention.fullMatch, '').trim();
+        }
+      }
+      fullPrompt = `${fileContextParts.join('\n\n')}\n\n${cleanedPrompt}`;
     }
 
     const systemPrompt = getSystemPrompt({ prompt, projectPath });
