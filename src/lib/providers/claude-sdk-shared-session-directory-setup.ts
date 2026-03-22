@@ -31,8 +31,9 @@ export function ensureSharedProjectsDir(isolatedConfigDir: string): void {
   const sdkProjectsDir = join(isolatedConfigDir, 'projects');
   const cliProjectsDir = join(homedir(), '.claude', 'projects');
 
-  // Ensure CLI projects dir exists (wrapped for graceful failure)
+  // Ensure parent dirs exist (isolatedConfigDir may not exist on fresh install)
   try {
+    mkdirSync(isolatedConfigDir, { recursive: true });
     mkdirSync(cliProjectsDir, { recursive: true });
   } catch (err) {
     log.warn({ err }, `Failed to create CLI projects dir ${cliProjectsDir} — skipping symlink setup`);
