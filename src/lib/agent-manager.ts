@@ -212,16 +212,18 @@ class AgentManager extends EventEmitter {
       fullPrompt += buildOutputFormatPrompt(outputFormat, outputSchema, attemptId);
     }
 
+    // Resolve provider first, then model based on provider type
+    const provider = requestedProvider ? getProvider(requestedProvider) : getActiveProvider();
+    const effectiveModel = provider.id === 'claude-cli'
+      ? (model?.trim() || FALLBACK_MODEL_ID)
+      : (model?.trim() || resolveDefaultModelFromEnv());
+
     // Build model identity and project context for system prompt
-    const effectiveModel = model?.trim() || resolveDefaultModelFromEnv();
     const modelDisplayName = modelIdToDisplayName(effectiveModel);
     const modelIdentity = modelDisplayName !== effectiveModel
       ? `You are powered by the model named ${modelDisplayName}. The exact model ID is ${effectiveModel}.`
       : `You are powered by the model ${effectiveModel}.`;
     const projectContext = `Your current working directory is ${projectPath}. All file operations should use paths relative to or within this directory.`;
-
-    // Use per-request provider if specified, otherwise fall back to env-based default
-    const provider = requestedProvider ? getProvider(requestedProvider) : getActiveProvider();
 
     // Wire up provider events for this attempt
     wireProviderEvents(this.buildWiringContext(), provider, attemptId, outputFormat, projectPath);
